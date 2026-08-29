@@ -72,6 +72,27 @@ export async function POST(request: Request) {
           message = "API key appears valid";
         }
       }
+    } else if (service === "midjourney") {
+      // Validate Midjourney API key - just check it's not empty
+      // Full validation requires making an API call which requires setup
+      isValid = key.trim().length > 0;
+      message = isValid
+        ? "API key format is valid"
+        : "API key cannot be empty";
+    } else if (service === "google-gemini") {
+      // Validate Google Gemini API key - just check it's not empty
+      // Full validation would require making an API call
+      isValid = key.trim().length > 0;
+      message = isValid
+        ? "API key format is valid"
+        : "API key cannot be empty";
+    } else if (service === "freepik") {
+      // Validate Freepik API key - just check it's not empty
+      // Full validation would require making an API call
+      isValid = key.trim().length > 0;
+      message = isValid
+        ? "API key format is valid"
+        : "API key cannot be empty";
     }
 
     return NextResponse.json({ isValid, message });

@@ -2,13 +2,16 @@
 
 import { useState, memo } from "react";
 import Image from "next/image";
-import { toast } from "sonner";
+import { apiFetch } from "@/lib/csrf";
+import ImageToolModal from "./ImageToolModal";
+import type { ImageToolType } from "@/lib/image-tools/types";
 
 interface ToolCard {
   title: string;
   description: string;
   image: string;
   imageAfter: string;
+  toolType: ImageToolType;
   badge?: {
     text: string;
     variant: "unlimited" | "pro" | "new";
@@ -21,12 +24,14 @@ const toolCards: ToolCard[] = [
     description: "Transform blurry photos into crisp images",
     image: "/images/sharpen-before.jpg",
     imageAfter: "/images/sharpen-after.jpg",
+    toolType: "sharpen",
   },
   {
     title: "Upscale",
     description: "Enhance resolution up to 8x",
     image: "/images/upscale-before.jpg",
     imageAfter: "/images/upscale-after.jpg",
+    toolType: "upscale",
     badge: { text: "PRO", variant: "pro" },
   },
   {
@@ -34,18 +39,21 @@ const toolCards: ToolCard[] = [
     description: "Transform any background instantly",
     image: "/images/bg-remix-before.jpg",
     imageAfter: "/images/bg-remix-after.jpg",
+    toolType: "background-remove",
   },
   {
     title: "Color Grade",
     description: "Professional cinematic color correction",
     image: "/images/color-before.jpg",
     imageAfter: "/images/color-after.jpg",
+    toolType: "color-grade",
   },
   {
     title: "Portrait Enhance",
     description: "Turn selfies into professional portraits",
     image: "/images/portrait-before.jpg",
     imageAfter: "/images/portrait-after.jpg",
+    toolType: "portrait-enhance",
     badge: { text: "NEW", variant: "new" },
   },
   {
@@ -53,12 +61,14 @@ const toolCards: ToolCard[] = [
     description: "Fix poorly lit photos with AI",
     image: "/images/lighting-before.jpg",
     imageAfter: "/images/lighting-after.jpg",
+    toolType: "lighting-fix",
   },
   {
     title: "Product Photo",
     description: "Create stunning product ad shots",
     image: "/images/product-before.jpg",
     imageAfter: "/images/product-after.jpg",
+    toolType: "product-photo",
     badge: { text: "PRO", variant: "pro" },
   },
   {
@@ -66,6 +76,7 @@ const toolCards: ToolCard[] = [
     description: "Apply artistic styles to any image",
     image: "/images/style-before.jpg",
     imageAfter: "/images/style-after.jpg",
+    toolType: "style-transfer",
   },
 ];
 
@@ -78,23 +89,19 @@ const badgeStyles = {
 const ToolCardComponent = memo(function ToolCardComponent({
   card,
   priority = false,
+  onSelect,
 }: {
   card: ToolCard;
   priority?: boolean;
+  onSelect: (toolType: ImageToolType) => void;
 }) {
   const [beforeLoaded, setBeforeLoaded] = useState(false);
   const [afterLoaded, setAfterLoaded] = useState(false);
   const isLoaded = beforeLoaded && afterLoaded;
 
-  const handleClick = () => {
-    toast("Coming soon", {
-      description: `${card.title} will be available in a future update.`,
-    });
-  };
-
   return (
     <button
-      onClick={handleClick}
+      onClick={() => onSelect(card.toolType)}
       className="group h-56 w-[17%] min-w-[160px] flex-shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/40 text-left backdrop-blur-xl transition-colors duration-150 hover:border-white/20 hover:bg-black/50"
     >
       <div className="relative h-40 w-full overflow-hidden bg-black/20">
@@ -157,38 +164,55 @@ const ToolCardComponent = memo(function ToolCardComponent({
 });
 
 export default function TopChoice() {
-  const handleSeeAll = () => {
-    toast("Coming soon", {
-      description: "All tools will be available in a future update.",
+  const [selectedTool, setSelectedTool] = useState<ImageToolType | null>(null);
+
+  const handleSaveToGallery = async (url: string, prompt: string) => {
+    const response = await apiFetch("/api/images", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        prompt,
+        aspectRatio: "1:1",
+      }),
     });
+
+    if (!response.ok) {
+      throw new Error("Failed to save image");
+    }
   };
 
   return (
-    <section className="mt-8 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-heading text-2xl text-white">QUICK TOOLS</h2>
-          <p className="text-sm text-zinc-300">
-            Powerful AI enhancements at your fingertips
-          </p>
+    <>
+      <section className="mt-8 flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-heading text-2xl text-white">QUICK TOOLS</h2>
+            <p className="text-sm text-zinc-300">
+              Powerful AI enhancements at your fingertips
+            </p>
+          </div>
         </div>
-        <button
-          onClick={handleSeeAll}
-          className="flex items-center gap-2 text-sm text-white transition-colors duration-150 hover:text-pink-400"
-        >
-          See all
-          <span>→</span>
-        </button>
-      </div>
-      <div className="hide-scrollbar flex gap-4 overflow-x-auto pb-2">
-        {toolCards.map((card, index) => (
-          <ToolCardComponent
-            key={card.title}
-            card={card}
-            priority={index < 4}
-          />
-        ))}
-      </div>
-    </section>
+        <div className="hide-scrollbar flex gap-4 overflow-x-auto pb-2">
+          {toolCards.map((card, index) => (
+            <ToolCardComponent
+              key={card.title}
+              card={card}
+              priority={index < 4}
+              onSelect={setSelectedTool}
+            />
+          ))}
+        </div>
+      </section>
+
+      {/* Tool Modal */}
+      {selectedTool && (
+        <ImageToolModal
+          tool={selectedTool}
+          onClose={() => setSelectedTool(null)}
+          onSaveToGallery={handleSaveToGallery}
+        />
+      )}
+    </>
   );
 }

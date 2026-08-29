@@ -21,6 +21,18 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "v3b.fal.media",
       },
+      {
+        protocol: "https",
+        hostname: "ai-statics.freepik.com",
+      },
+      {
+        protocol: "https",
+        hostname: "cdn-magnific.freepik.com",
+      },
+      {
+        protocol: "https",
+        hostname: "*.freepik.com",
+      },
     ],
   },
 };

@@ -4,4 +4,6 @@ export interface GeneratedImage {
   prompt: string;
   aspectRatio: string;
   createdAt: string;
+  generator?: string;
+  generatorModel?: string;
 }

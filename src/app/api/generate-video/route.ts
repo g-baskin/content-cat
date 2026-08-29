@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  createKling26Client,
-  createKling25TurboClient,
-  createWan26Client,
-  createVeo31Client,
-  parseFalError,
-  type VideoModelId,
-  type Kling25TurboSpecialFx,
-  type Veo31Duration,
-  type Veo31AspectRatio,
-  type Veo31Resolution,
-} from "@/lib/fal";
+  getVideoGeneratorClient,
+  parseVideoGeneratorError,
+  getServiceForModel,
+  type VideoGeneratorService,
+} from "@/lib/video-generators";
 import { prisma } from "@/lib/prisma";
 import { getApiKey } from "@/lib/services/apiKeyService";
 import {
@@ -25,33 +19,54 @@ import { requireAuth } from "@/lib/auth-helpers";
 import { logger } from "@/lib/logger";
 import { resolveImageForFal } from "@/lib/storage";
 
+// All supported models across all services
+const ALL_MODELS = [
+  // FAL.ai models
+  "kling-2.6",
+  "kling-2.5-turbo",
+  "wan-2.6",
+  "veo-3.1",
+  // OpenAI Sora models
+  "sora-2",
+  "sora-2-pro",
+  // Runway models
+  "gen-3-alpha",
+  "gen-3-alpha-turbo",
+  // Pika models
+  "pika-2.0",
+  "pika-1.5",
+  // Luma models
+  "dream-machine",
+  "dream-machine-1.5",
+] as const;
+
 // Zod schema for video generation request
 const generateVideoSchema = z.object({
   prompt: z.string().min(1, "Prompt is required").max(5000, "Prompt too long"),
-  model: z
-    .enum(["kling-2.6", "kling-2.5-turbo", "wan-2.6", "veo-3.1"])
-    .default("kling-2.6"),
+  // Service can be explicitly specified or inferred from model
+  service: z
+    .enum(["fal", "openai", "runway", "pika", "luma"])
+    .optional(),
+  model: z.enum(ALL_MODELS).default("kling-2.6"),
   mode: z
     .enum(["text-to-video", "image-to-video", "first-last-frame"])
     .default("text-to-video"),
-  duration: z.enum(["4", "5", "6", "8", "10", "15"]).default("5"), // Veo uses 4/6/8, others use 5/10/15
+  duration: z.number().int().min(4).max(20).default(5),
   aspectRatio: z
-    .enum(["auto", "16:9", "9:16", "1:1", "4:3", "3:4"])
+    .enum(["auto", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"])
     .default("16:9"),
   resolution: z.enum(["480p", "720p", "1080p"]).optional(),
   audioEnabled: z.boolean().default(false),
   enhanceEnabled: z.boolean().default(false),
-  imageUrl: z.string().optional(),
-  endImageUrl: z.string().optional(),
-  negativePrompt: z.string().max(500).optional(),
+  imageUrl: z.string().optional().nullable(),
+  endImageUrl: z.string().optional().nullable(),
+  negativePrompt: z.string().max(500).optional().nullable(),
   cfgScale: z.number().min(0).max(1).default(0.5),
-  seed: z.number().int().optional(),
-  specialFx: z.string().optional(),
-  // Veo 3.1 specific fields
-  firstFrameUrl: z.string().optional(),
-  lastFrameUrl: z.string().optional(),
-  generateAudio: z.boolean().default(true),
+  seed: z.number().int().optional().nullable(),
   speed: z.enum(["standard", "fast"]).default("standard"),
+  // Legacy fields for Veo 3.1 first/last frame mode
+  firstFrameUrl: z.string().optional().nullable(),
+  lastFrameUrl: z.string().optional().nullable(),
 });
 
 export async function POST(request: NextRequest) {
@@ -78,6 +93,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let service: VideoGeneratorService = "fal";
+
   try {
     const body = await request.json();
     const parseResult = generateVideoSchema.safeParse(body);
@@ -92,42 +109,57 @@ export async function POST(request: NextRequest) {
 
     const {
       prompt,
+      service: requestedService,
       model,
       mode,
       aspectRatio,
       duration,
       resolution,
       audioEnabled,
-      enhanceEnabled,
       imageUrl,
       endImageUrl,
       negativePrompt,
       cfgScale,
       seed,
-      specialFx,
-      // Veo 3.1 specific
+      speed,
       firstFrameUrl,
       lastFrameUrl,
-      generateAudio,
-      speed,
     } = parseResult.data;
 
-    const apiKey = await getApiKey(user!.id);
+    // Determine which service to use
+    // Priority: explicit service > inferred from model > default to fal
+    if (requestedService) {
+      service = requestedService;
+    } else {
+      const inferredService = getServiceForModel(model);
+      if (inferredService) {
+        service = inferredService;
+      }
+    }
+
+    // Get API key for the service
+    const apiKey = await getApiKey(user!.id, service);
     if (!apiKey) {
+      const serviceNames: Record<VideoGeneratorService, string> = {
+        fal: "fal.ai",
+        openai: "OpenAI",
+        runway: "Runway",
+        pika: "Pika",
+        luma: "Luma",
+      };
       return NextResponse.json(
         {
-          error: "No API key. Add your fal.ai key in Settings.",
+          error: `No API key. Add your ${serviceNames[service]} key in Settings.`,
           code: "NO_API_KEY",
         },
         { status: 400 }
       );
     }
 
-    const modelId = (model || "kling-2.6") as VideoModelId;
-
     // Log input for debugging (sanitized)
     logger.debug("Video generation request", {
-      modelId,
+      service,
+      model,
       mode,
       aspectRatio,
       duration,
@@ -139,148 +171,88 @@ export async function POST(request: NextRequest) {
       speed,
     });
 
-    // Resolve local file URLs to base64 for FAL.ai
-    // (FAL.ai can't access our local /api/files/ URLs)
-    const resolvedImageUrl = await resolveImageForFal(imageUrl);
-    const resolvedEndImageUrl = await resolveImageForFal(endImageUrl);
-    const resolvedFirstFrameUrl = await resolveImageForFal(firstFrameUrl);
-    const resolvedLastFrameUrl = await resolveImageForFal(lastFrameUrl);
+    // Resolve local file URLs to base64 for services that can't access local URLs
+    // Convert null to undefined for type compatibility
+    const resolvedImageUrl = await resolveImageForFal(imageUrl ?? undefined);
+    const resolvedEndImageUrl = await resolveImageForFal(endImageUrl ?? undefined);
+    const resolvedFirstFrameUrl = await resolveImageForFal(firstFrameUrl ?? undefined);
+    const resolvedLastFrameUrl = await resolveImageForFal(lastFrameUrl ?? undefined);
+    const resolvedNegativePrompt = negativePrompt ?? undefined;
+    const resolvedSeed = seed ?? undefined;
+
+    // Get the generator client
+    const generator = await getVideoGeneratorClient(service, apiKey, model);
+
+    // Check if the mode is supported
+    const capabilities = generator.getCapabilities();
+    if (!capabilities.supportedModes.includes(mode)) {
+      return NextResponse.json(
+        {
+          error: `${mode} is not supported by ${model}. Supported modes: ${capabilities.supportedModes.join(", ")}`,
+        },
+        { status: 400 }
+      );
+    }
 
     // Generate video with timeout protection
-    const generateVideo = async (): Promise<{
-      video: { url: string };
-      seed?: number;
-    }> => {
-      switch (modelId) {
-        case "kling-2.6": {
-          const client = createKling26Client(apiKey);
-          if (mode === "image-to-video" && resolvedImageUrl) {
-            return client.generateImageToVideo({
-              prompt,
-              image_url: resolvedImageUrl,
-              duration: duration as "5" | "10",
-              aspect_ratio: aspectRatio as "16:9" | "9:16" | "1:1",
-              generate_audio: audioEnabled ?? false,
-              negative_prompt: negativePrompt,
-              cfg_scale: cfgScale ?? 0.5,
-              seed,
-            });
-          } else {
-            return client.generateTextToVideo({
-              prompt,
-              aspect_ratio: aspectRatio as "16:9" | "9:16" | "1:1",
-              duration: duration as "5" | "10",
-              generate_audio: audioEnabled ?? false,
-              negative_prompt: negativePrompt,
-              cfg_scale: cfgScale ?? 0.5,
-              seed,
-            });
-          }
+    const generateVideo = async () => {
+      // First/last frame mode (Veo 3.1 only)
+      if (mode === "first-last-frame") {
+        if (!generator.generateFirstLastFrame) {
+          throw new Error(`First-last-frame mode is not supported by ${model}`);
         }
-
-        case "kling-2.5-turbo": {
-          const client = createKling25TurboClient(apiKey);
-          if (mode === "image-to-video" && resolvedImageUrl) {
-            return client.generateImageToVideo({
-              prompt,
-              image_url: resolvedImageUrl,
-              duration: duration as "5" | "10",
-              aspect_ratio: aspectRatio as "16:9" | "9:16" | "1:1",
-              negative_prompt: negativePrompt,
-              cfg_scale: cfgScale ?? 0.5,
-              tail_image_url: resolvedEndImageUrl,
-              special_fx: (specialFx as Kling25TurboSpecialFx) || undefined,
-              seed,
-            });
-          } else {
-            return client.generateTextToVideo({
-              prompt,
-              aspect_ratio: aspectRatio as "16:9" | "9:16" | "1:1",
-              duration: duration as "5" | "10",
-              negative_prompt: negativePrompt,
-              cfg_scale: cfgScale ?? 0.5,
-              seed,
-            });
-          }
+        if (!resolvedFirstFrameUrl || !resolvedLastFrameUrl) {
+          throw new Error(
+            "First frame and last frame URLs are required for first-last-frame mode"
+          );
         }
-
-        case "wan-2.6": {
-          const client = createWan26Client(apiKey);
-          if (mode === "image-to-video" && resolvedImageUrl) {
-            return client.generateImageToVideo({
-              prompt,
-              image_url: resolvedImageUrl,
-              duration: duration as "5" | "10" | "15",
-              resolution: resolution as "720p" | "1080p",
-              aspect_ratio: aspectRatio as
-                | "16:9"
-                | "9:16"
-                | "1:1"
-                | "4:3"
-                | "3:4",
-              enable_prompt_expansion: enhanceEnabled ?? false,
-              negative_prompt: negativePrompt,
-              seed,
-            });
-          } else {
-            return client.generateTextToVideo({
-              prompt,
-              aspect_ratio: aspectRatio as
-                | "16:9"
-                | "9:16"
-                | "1:1"
-                | "4:3"
-                | "3:4",
-              duration: duration as "5" | "10" | "15",
-              resolution: resolution as "720p" | "1080p",
-              enable_prompt_expansion: enhanceEnabled ?? false,
-              negative_prompt: negativePrompt,
-              seed,
-            });
-          }
-        }
-
-        case "veo-3.1": {
-          const client = createVeo31Client(apiKey);
-          if (mode === "first-last-frame") {
-            // First/Last frame mode
-            if (!resolvedFirstFrameUrl || !resolvedLastFrameUrl) {
-              throw new Error(
-                "First frame and last frame URLs are required for first-last-frame mode"
-              );
-            }
-            return client.generateVideo({
-              prompt,
-              first_frame_url: resolvedFirstFrameUrl,
-              last_frame_url: resolvedLastFrameUrl,
-              duration: `${duration}s` as Veo31Duration,
-              aspect_ratio: aspectRatio as Veo31AspectRatio,
-              resolution: (resolution || "720p") as Veo31Resolution,
-              generate_audio: generateAudio ?? true,
-              speed: speed as "standard" | "fast",
-            });
-          } else {
-            // Image-to-video mode
-            if (!resolvedImageUrl) {
-              throw new Error(
-                "Image URL is required for image-to-video mode"
-              );
-            }
-            return client.generateImageToVideo({
-              prompt,
-              image_url: resolvedImageUrl,
-              duration: `${duration}s` as Veo31Duration,
-              aspect_ratio: aspectRatio as Veo31AspectRatio,
-              resolution: (resolution || "720p") as Veo31Resolution,
-              generate_audio: generateAudio ?? true,
-              speed: speed as "standard" | "fast",
-            });
-          }
-        }
-
-        default:
-          throw new Error(`Unknown model: ${modelId}`);
+        return generator.generateFirstLastFrame({
+          prompt,
+          firstFrameUrl: resolvedFirstFrameUrl,
+          lastFrameUrl: resolvedLastFrameUrl,
+          duration,
+          aspectRatio,
+          resolution,
+          negativePrompt: resolvedNegativePrompt,
+          seed: resolvedSeed,
+          enableAudio: audioEnabled,
+          cfgScale,
+          speed,
+        });
       }
+
+      // Image-to-video mode
+      if (mode === "image-to-video") {
+        if (!resolvedImageUrl) {
+          throw new Error("Image URL is required for image-to-video mode");
+        }
+        return generator.generateImageToVideo({
+          prompt,
+          imageUrl: resolvedImageUrl,
+          endImageUrl: resolvedEndImageUrl,
+          duration,
+          aspectRatio,
+          resolution,
+          negativePrompt: resolvedNegativePrompt,
+          seed: resolvedSeed,
+          enableAudio: audioEnabled,
+          cfgScale,
+          speed,
+        });
+      }
+
+      // Text-to-video mode (default)
+      return generator.generateTextToVideo({
+        prompt,
+        duration,
+        aspectRatio,
+        resolution,
+        negativePrompt: resolvedNegativePrompt,
+        seed: resolvedSeed,
+        enableAudio: audioEnabled,
+        cfgScale,
+        speed,
+      });
     };
 
     const result = await withTimeout(
@@ -290,15 +262,14 @@ export async function POST(request: NextRequest) {
     );
 
     // Save the video to the database
-    // Use the input image as thumbnail for image-to-video generations
     const video = await prisma.generatedVideo.create({
       data: {
         userId: user!.id,
-        url: result.video.url,
-        thumbnailUrl: imageUrl || null, // Use input image as thumbnail
+        url: result.videoUrl,
+        thumbnailUrl: imageUrl || result.video.thumbnailUrl || null,
         prompt,
-        model: modelId,
-        duration: parseInt(duration) || 5,
+        model,
+        duration: duration || 5,
         aspectRatio: aspectRatio || "16:9",
         resolution,
         startImageUrl: imageUrl,
@@ -309,14 +280,16 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      video: video, // Return the full database record
-      videoUrl: result.video.url,
+      video,
+      videoUrl: result.videoUrl,
       seed: result.seed,
       id: video.id,
+      jobId: result.jobId,
     });
   } catch (error: unknown) {
     logger.error("Video generation error", {
       error: error instanceof Error ? error.message : "Unknown error",
+      service,
     });
 
     // Handle timeout errors specifically
@@ -329,7 +302,7 @@ export async function POST(request: NextRequest) {
 
     const errorMsg =
       error instanceof Error ? error.message : "Failed to generate video";
-    const parsed = parseFalError(errorMsg);
+    const parsed = parseVideoGeneratorError(errorMsg, service);
     return NextResponse.json(parsed, { status: 500 });
   }
 }

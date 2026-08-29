@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/csrf";
 import Header from "@/components/Header";
@@ -44,11 +44,15 @@ function ImagePageSkeleton() {
 
 function ImagePageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialPrompt = searchParams.get("prompt") || "";
   const initialModel = searchParams.get("model") || undefined;
   const initialCharacterId = searchParams.get("characterId") || undefined;
   const initialProductId = searchParams.get("productId") || undefined;
   const initialSubModel = initialCharacterId || initialProductId || undefined;
+
+  // Upscale state
+  const [isUpscaling, setIsUpscaling] = useState(false);
 
   // Use global store for pending count to persist across navigation
   const {
@@ -112,8 +116,67 @@ function ImagePageContent() {
     setDeleteConfirmId(id);
   };
 
+  const handleVideo = (imageUrl: string, prompt: string) => {
+    // Navigate to video page with the image as reference
+    router.push(`/video?imageUrl=${encodeURIComponent(imageUrl)}&prompt=${encodeURIComponent(prompt)}`);
+  };
+
+  const handleUpscale = async (imageUrl: string, prompt: string) => {
+    if (isUpscaling) return;
+
+    setIsUpscaling(true);
+    toast.info("Starting upscale...");
+
+    try {
+      const response = await apiFetch("/api/upscale-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl, scale: "2" }),
+        timeout: 300000, // 5 minutes for upscale
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.error || "Failed to upscale image");
+        return;
+      }
+
+      if (result.url) {
+        // Save the upscaled image to database
+        const saveResponse = await apiFetch("/api/images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: result.url,
+            prompt: `${prompt} (2x upscaled)`,
+            aspectRatio: "1:1", // Upscaled maintains ratio
+          }),
+        });
+
+        if (saveResponse.ok) {
+          const savedImage = await saveResponse.json();
+          addImage(savedImage);
+          toast.success("Image upscaled successfully!");
+        }
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to upscale image"
+      );
+    } finally {
+      setIsUpscaling(false);
+    }
+  };
+
+  const handleEditImage = (imageUrl: string) => {
+    setEditData({ imageUrl });
+    setSelectedImage(null);
+  };
+
   const handleGenerate = (data: {
     prompt: string;
+    service: string;
     model: string;
     count: number;
     aspectRatio: string;
@@ -121,94 +184,95 @@ function ImagePageContent() {
     outputFormat: string;
     referenceImages: string[];
   }) => {
-    // Create unique IDs for each pending generation and add to global store
-    const generationIds: string[] = [];
+    // Create a single generation ID for the batch
+    const generationId = `img-${Date.now()}`;
+
+    // Add pending placeholders for each expected image
     for (let i = 0; i < data.count; i++) {
-      const id = `img-${Date.now()}-${i}`;
-      generationIds.push(id);
-      addImageGeneration(id, data.prompt);
+      addImageGeneration(`${generationId}-${i}`, data.prompt);
     }
 
-    // Process generation in background without blocking
+    // Process generation in background - single API call with numImages
     const generateImages = async () => {
-      let successCount = 0;
+      try {
+        const response = await apiFetch("/api/generate-image", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            prompt: data.prompt,
+            service: data.service,
+            model: data.model,
+            aspectRatio: data.aspectRatio,
+            resolution: data.resolution,
+            outputFormat: data.outputFormat,
+            imageUrls: data.referenceImages,
+            numImages: data.count, // Generate all images in one call for variation
+          }),
+          timeout: 180000, // 3 minutes for multiple image generation
+        });
 
-      for (let i = 0; i < data.count; i++) {
-        const generationId = generationIds[i];
-        try {
-          const response = await apiFetch("/api/generate-image", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              prompt: data.prompt,
-              aspectRatio: data.aspectRatio,
-              resolution: data.resolution,
-              outputFormat: data.outputFormat,
-              imageUrls: data.referenceImages,
-            }),
-            timeout: 120000, // 2 minutes for image generation
-          });
+        const result = await response.json();
 
-          const result = await response.json();
+        // Clear all pending placeholders
+        for (let i = 0; i < data.count; i++) {
+          removeImageGeneration(`${generationId}-${i}`);
+        }
 
-          if (!response.ok) {
-            toast.error(result.error || "Failed to generate image");
-            // Remove from global store on failure
-            removeImageGeneration(generationId);
-            continue; // Try next one instead of breaking
-          }
+        if (!response.ok) {
+          toast.error(result.error || "Failed to generate images");
+          return;
+        }
 
-          if (result.resultUrls && result.resultUrls.length > 0) {
-            for (const url of result.resultUrls) {
-              // Save to database
-              const saveResponse = await apiFetch("/api/images", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  url,
-                  prompt: data.prompt,
-                  aspectRatio: data.aspectRatio,
-                }),
-              });
+        let successCount = 0;
+        if (result.resultUrls && result.resultUrls.length > 0) {
+          for (const url of result.resultUrls) {
+            // Save to database
+            const saveResponse = await apiFetch("/api/images", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url,
+                prompt: data.prompt,
+                aspectRatio: data.aspectRatio,
+              }),
+            });
 
-              if (saveResponse.ok) {
-                const savedImage = await saveResponse.json();
-                // Add each image immediately as it's generated
-                addImage(savedImage);
-                successCount++;
-              }
+            if (saveResponse.ok) {
+              const savedImage = await saveResponse.json();
+              // Add each image immediately
+              addImage(savedImage);
+              successCount++;
             }
           }
-
-          // Remove from global store after successful generation
-          removeImageGeneration(generationId);
-        } catch (err) {
-          toast.error(
-            err instanceof Error
-              ? err.message
-              : "Something went wrong. Try again."
-          );
-          // Remove from global store on failure
-          removeImageGeneration(generationId);
         }
-      }
 
-      if (successCount > 0) {
-        toast.success(
-          `Generated ${successCount} image${successCount > 1 ? "s" : ""}`
+        if (successCount > 0) {
+          toast.success(
+            `Generated ${successCount} image${successCount > 1 ? "s" : ""}`
+          );
+        }
+      } catch (err) {
+        // Clear all pending placeholders on error
+        for (let i = 0; i < data.count; i++) {
+          removeImageGeneration(`${generationId}-${i}`);
+        }
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Something went wrong. Try again."
         );
       }
     };
 
     // Start generation in background with proper error handling
     generateImages().catch((error) => {
-      // Catch any unhandled errors to prevent crashes
       console.error("Unhandled error in image generation:", error);
       toast.error("An unexpected error occurred. Please try again.");
-      // Clear all generations for this batch on catastrophic failure
-      generationIds.forEach((id) => removeImageGeneration(id));
+      for (let i = 0; i < data.count; i++) {
+        removeImageGeneration(`${generationId}-${i}`);
+      }
     });
   };
 
@@ -299,6 +363,9 @@ function ImagePageContent() {
             setRecreateData({ prompt });
             setSelectedImage(null);
           }}
+          onVideo={(imageUrl, prompt) => handleVideo(imageUrl, prompt)}
+          onUpscale={(imageUrl, prompt) => handleUpscale(imageUrl, prompt)}
+          onEdit={(imageUrl) => handleEditImage(imageUrl)}
         />
       )}
 

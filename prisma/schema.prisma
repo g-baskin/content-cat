@@ -8,19 +8,22 @@ datasource db {
 }
 
 model GeneratedImage {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  url         String
-  prompt      String
-  aspectRatio String   @map("aspect_ratio")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  url              String
+  prompt           String
+  aspectRatio      String   @map("aspect_ratio")
+  generator        String   @default("fal") // "fal" or "midjourney"
+  generatorModel   String   @default("nano-banana-pro") @map("generator_model") // specific model used
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([createdAt])
   @@index([userId, createdAt])
+  @@index([generator])
   @@map("generated_images")
 }
 
@@ -87,7 +90,8 @@ model GeneratedVideo {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storyboard Storyboard? // Back-relation for finalVideo
 
   @@index([userId])
   @@index([createdAt])
@@ -112,6 +116,78 @@ model Workflow {
   @@map("workflows")
 }
 
+model Storyboard {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  name         String   @default("Untitled Storyboard")
+  description  String?
+  status       String   @default("draft") // draft, generating, complete, failed
+  totalDuration Int     @default(0) @map("total_duration") // calculated from scenes
+  aspectRatio  String   @default("16:9") @map("aspect_ratio")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Final stitched video
+  finalVideoId  String?         @unique @map("final_video_id")
+  finalVideo    GeneratedVideo? @relation(fields: [finalVideoId], references: [id])
+
+  scenes Scene[]
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("storyboards")
+}
+
+model Scene {
+  id           String   @id @default(uuid())
+  storyboardId String   @map("storyboard_id")
+  order        Int      // Scene order in storyboard (0-indexed)
+  name         String?  // Optional scene name
+  prompt       String
+  duration     Int      @default(5) // seconds
+  aspectRatio  String   @default("16:9") @map("aspect_ratio")
+  service      String   @default("fal") // fal, openai, runway, pika, luma
+  model        String   @default("kling-2.6") // specific model to use
+
+  // Generation state
+  status       String   @default("pending") // pending, generating, complete, failed
+  videoUrl     String?  @map("video_url")
+  thumbnailUrl String?  @map("thumbnail_url")
+  error        String?
+
+  // Video generation options
+  negativePrompt String? @map("negative_prompt")
+  seed           Int?
+  cfgScale       Float?  @default(0.5) @map("cfg_scale")
+  enableAudio    Boolean @default(false) @map("enable_audio")
+
+  // Reference images for image-to-video
+  startImageUrl String? @map("start_image_url")
+  endImageUrl   String? @map("end_image_url")
+
+  // Transition to next scene
+  transition         String? @default("cut") // cut, fade, dissolve, wipe
+  transitionDuration Float?  @default(0.5) @map("transition_duration") // seconds
+
+  // Dialogue/TTS
+  dialogueText  String? @map("dialogue_text")
+  dialogueVoice String? @map("dialogue_voice") // Voice ID for TTS
+  dialogueUrl   String? @map("dialogue_url")   // Generated TTS audio URL
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  storyboard Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+
+  @@index([storyboardId])
+  @@index([storyboardId, order])
+  @@index([status])
+  @@map("scenes")
+}
+
 model User {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -129,6 +205,7 @@ model User {
   products        Product[]
   generatedVideos GeneratedVideo[]
   workflows       Workflow[]
+  storyboards     Storyboard[]
 
   @@map("users")
 }

@@ -1,4 +1,4 @@
-import { writeFile, mkdir, readdir, stat, unlink, readFile } from "fs/promises";
+import { writeFile, mkdir, readdir, stat, unlink, readFile, copyFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
@@ -6,12 +6,43 @@ import { randomUUID } from "crypto";
 // Base upload directory - relative to project root
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 
+/**
+ * Save a file from a local path to storage
+ * Useful for saving generated files like stitched videos
+ */
+export async function saveFileFromPath(
+  sourcePath: string,
+  category: string = "general",
+  extension?: string
+): Promise<string> {
+  await ensureUploadDir();
+
+  // Create category subdirectory
+  const categoryDir = path.join(UPLOAD_DIR, category);
+  if (!existsSync(categoryDir)) {
+    await mkdir(categoryDir, { recursive: true });
+  }
+
+  // Generate unique filename
+  const ext = extension || path.extname(sourcePath);
+  const uniqueId = randomUUID();
+  const filename = `${uniqueId}${ext}`;
+  const destPath = path.join(categoryDir, filename);
+
+  // Copy file to destination
+  await copyFile(sourcePath, destPath);
+
+  // Return the URL path
+  return `/api/files/${category}/${filename}`;
+}
+
 export interface StorageStats {
   totalFiles: number;
   totalSizeBytes: number;
   byType: {
     images: number;
     videos: number;
+    audio: number;
     other: number;
   };
 }
@@ -132,6 +163,9 @@ function getMimeType(filepath: string): string {
     ".mp4": "video/mp4",
     ".webm": "video/webm",
     ".mov": "video/quicktime",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
   };
   return mimeTypes[ext] || "application/octet-stream";
 }
@@ -191,7 +225,7 @@ export interface UploadedFile {
   url: string;
   filename: string;
   category: string;
-  type: "image" | "video" | "other";
+  type: "image" | "video" | "audio" | "other";
   sizeBytes: number;
   createdAt: Date;
 }
@@ -206,6 +240,7 @@ export async function listUploadedFiles(): Promise<UploadedFile[]> {
 
   const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
   const videoExts = [".mp4", ".webm", ".mov"];
+  const audioExts = [".mp3", ".wav", ".ogg"];
   const files: UploadedFile[] = [];
 
   async function scanCategory(category: string): Promise<void> {
@@ -221,11 +256,13 @@ export async function listUploadedFiles(): Promise<UploadedFile[]> {
       const fileStat = await stat(fullPath);
       const ext = path.extname(entry.name).toLowerCase();
 
-      let type: "image" | "video" | "other" = "other";
+      let type: "image" | "video" | "audio" | "other" = "other";
       if (imageExts.includes(ext)) {
         type = "image";
       } else if (videoExts.includes(ext)) {
         type = "video";
+      } else if (audioExts.includes(ext)) {
+        type = "audio";
       }
 
       files.push({
@@ -241,7 +278,18 @@ export async function listUploadedFiles(): Promise<UploadedFile[]> {
   }
 
   // Scan all known categories
-  const categories = ["workflows", "videos", "images", "characters", "products", "general", "video-edit"];
+  const categories = [
+    "workflows",
+    "videos",
+    "images",
+    "characters",
+    "products",
+    "general",
+    "video-edit",
+    "tts",
+    "dialogue",
+    "storyboards",
+  ];
   for (const category of categories) {
     await scanCategory(category);
   }
@@ -262,6 +310,7 @@ export async function getStorageStats(): Promise<StorageStats> {
     byType: {
       images: 0,
       videos: 0,
+      audio: 0,
       other: 0,
     },
   };
@@ -272,6 +321,7 @@ export async function getStorageStats(): Promise<StorageStats> {
 
   const imageExts = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
   const videoExts = [".mp4", ".webm", ".mov"];
+  const audioExts = [".mp3", ".wav", ".ogg"];
 
   async function scanDir(dir: string): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true });
@@ -291,6 +341,8 @@ export async function getStorageStats(): Promise<StorageStats> {
           stats.byType.images++;
         } else if (videoExts.includes(ext)) {
           stats.byType.videos++;
+        } else if (audioExts.includes(ext)) {
+          stats.byType.audio++;
         } else {
           stats.byType.other++;
         }

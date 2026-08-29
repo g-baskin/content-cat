@@ -26,31 +26,51 @@ const categories = [
   { id: "ugc", name: "UGC" },
 ];
 
+// Preset colors for visual distinction
+const presetColors: Record<string, { from: string; via: string; to: string }> = {
+  "General": { from: "from-indigo-600", via: "via-purple-600", to: "to-pink-500" },
+  "Animalization": { from: "from-amber-500", via: "via-orange-500", to: "to-red-500" },
+  "Giant Grab": { from: "from-emerald-500", via: "via-teal-500", to: "to-cyan-500" },
+  "Starship Troopers": { from: "from-slate-600", via: "via-zinc-500", to: "to-stone-400" },
+  "Cyborg": { from: "from-cyan-500", via: "via-blue-500", to: "to-indigo-600" },
+  "Northern Lights": { from: "from-green-400", via: "via-emerald-500", to: "to-teal-600" },
+  "Fairies Around": { from: "from-pink-400", via: "via-rose-400", to: "to-fuchsia-500" },
+  "Sakura Petals": { from: "from-pink-300", via: "via-rose-300", to: "to-pink-400" },
+  "Saint Glow": { from: "from-amber-300", via: "via-yellow-400", to: "to-orange-400" },
+  "Objects Around": { from: "from-violet-500", via: "via-purple-500", to: "to-fuchsia-500" },
+  "Monstrosity": { from: "from-red-600", via: "via-rose-600", to: "to-pink-600" },
+  "Ice Rose": { from: "from-sky-300", via: "via-blue-300", to: "to-indigo-400" },
+  "Firework": { from: "from-red-500", via: "via-orange-500", to: "to-yellow-400" },
+  "Air Element": { from: "from-sky-400", via: "via-cyan-400", to: "to-teal-400" },
+  "I Can Fly": { from: "from-blue-400", via: "via-indigo-400", to: "to-violet-500" },
+  "Visor X": { from: "from-zinc-700", via: "via-slate-600", to: "to-gray-500" },
+  "Aquarium": { from: "from-blue-500", via: "via-cyan-500", to: "to-teal-400" },
+  "Ballet": { from: "from-rose-300", via: "via-pink-300", to: "to-fuchsia-300" },
+  "Multiverse": { from: "from-purple-600", via: "via-violet-600", to: "to-indigo-600" },
+  "Plasma Explosion": { from: "from-orange-500", via: "via-red-500", to: "to-rose-600" },
+};
+
 const presets = [
-  { id: 1, name: "General", thumbnail: "/presets/general.webp" },
-  { id: 2, name: "Animalization", thumbnail: "/presets/animalization.webp" },
-  { id: 3, name: "Giant Grab", thumbnail: "/presets/giant-grab.webp" },
-  { id: 4, name: "Starship Troopers", thumbnail: "/presets/starship.webp" },
-  { id: 5, name: "Cyborg", thumbnail: "/presets/cyborg.webp" },
-  {
-    id: 6,
-    name: "Northern Lights",
-    thumbnail: "/presets/northern-lights.webp",
-  },
-  { id: 7, name: "Fairies Around", thumbnail: "/presets/fairies.webp" },
-  { id: 8, name: "Sakura Petals", thumbnail: "/presets/sakura.webp" },
-  { id: 9, name: "Saint Glow", thumbnail: "/presets/saint-glow.webp" },
-  { id: 10, name: "Objects Around", thumbnail: "/presets/objects.webp" },
-  { id: 11, name: "Monstrosity", thumbnail: "/presets/monstrosity.webp" },
-  { id: 12, name: "Ice Rose", thumbnail: "/presets/ice-rose.webp" },
-  { id: 13, name: "Firework", thumbnail: "/presets/firework.webp" },
-  { id: 14, name: "Air Element", thumbnail: "/presets/air-element.webp" },
-  { id: 15, name: "I Can Fly", thumbnail: "/presets/i-can-fly.webp" },
-  { id: 16, name: "Visor X", thumbnail: "/presets/visor-x.webp" },
-  { id: 17, name: "Aquarium", thumbnail: "/presets/aquarium.webp" },
-  { id: 18, name: "Ballet", thumbnail: "/presets/ballet.webp" },
-  { id: 19, name: "Multiverse", thumbnail: "/presets/multiverse.webp" },
-  { id: 20, name: "Plasma Explosion", thumbnail: "/presets/plasma.webp" },
+  { id: 1, name: "General", category: "all" },
+  { id: 2, name: "Animalization", category: "effects" },
+  { id: 3, name: "Giant Grab", category: "effects" },
+  { id: 4, name: "Starship Troopers", category: "viral" },
+  { id: 5, name: "Cyborg", category: "effects" },
+  { id: 6, name: "Northern Lights", category: "effects" },
+  { id: 7, name: "Fairies Around", category: "effects" },
+  { id: 8, name: "Sakura Petals", category: "effects" },
+  { id: 9, name: "Saint Glow", category: "effects" },
+  { id: 10, name: "Objects Around", category: "effects" },
+  { id: 11, name: "Monstrosity", category: "viral" },
+  { id: 12, name: "Ice Rose", category: "new" },
+  { id: 13, name: "Firework", category: "effects" },
+  { id: 14, name: "Air Element", category: "effects" },
+  { id: 15, name: "I Can Fly", category: "viral" },
+  { id: 16, name: "Visor X", category: "new" },
+  { id: 17, name: "Aquarium", category: "effects" },
+  { id: 18, name: "Ballet", category: "ugc" },
+  { id: 19, name: "Multiverse", category: "new" },
+  { id: 20, name: "Plasma Explosion", category: "new" },
 ];
 
 export default function PresetSelector({
@@ -127,43 +147,55 @@ export default function PresetSelector({
           isAnimating ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
         }`}
       >
-        {[0, 1, 2, 3, 4].map((columnIndex) => (
-          <div key={columnIndex} className="p-1">
-            {presets
-              .filter((_, index) => index % 5 === columnIndex)
-              .map((preset, itemIndex) => (
-                <figure
-                  key={preset.id}
-                  className={`group relative z-[1] mb-2 h-auto w-full cursor-pointer overflow-hidden rounded-2xl transition-all duration-500 ease-out ${
-                    isAnimating
-                      ? "translate-y-0 scale-100 opacity-100"
-                      : "translate-y-4 scale-95 opacity-0"
-                  }`}
-                  style={{
-                    aspectRatio: "0.75 / 1",
-                    transitionDelay: `${150 + columnIndex * 40 + itemIndex * 25}ms`,
-                  }}
-                  onClick={() => {
-                    onSelectPreset(preset.name);
-                    onClose();
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="absolute inset-0 z-10 flex h-full w-full items-end justify-start rounded-2xl bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.7)_80%)] px-2 pb-2 text-start font-bold uppercase ring-0 ring-pink-400 transition-all ring-inset hover:ring-2"
-                  >
-                    <div className="font-heading leading-[100%] text-white opacity-100 transition">
-                      <h4 className="text-[8px] lg:text-[10px]">
-                        {preset.name}
-                      </h4>
-                    </div>
-                  </button>
-                  {/* Placeholder gradient background */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-zinc-700 via-zinc-800 to-zinc-900" />
-                </figure>
-              ))}
-          </div>
-        ))}
+        {[0, 1, 2, 3, 4].map((columnIndex) => {
+          // Filter presets by category and search
+          const filteredPresets = presets.filter((preset) => {
+            const matchesCategory = activeCategory === "all" || preset.category === activeCategory;
+            const matchesSearch = !searchQuery || preset.name.toLowerCase().includes(searchQuery.toLowerCase());
+            return matchesCategory && matchesSearch;
+          });
+
+          return (
+            <div key={columnIndex} className="p-1">
+              {filteredPresets
+                .filter((_, index) => index % 5 === columnIndex)
+                .map((preset, itemIndex) => {
+                  const colors = presetColors[preset.name] || { from: "from-zinc-700", via: "via-zinc-800", to: "to-zinc-900" };
+                  return (
+                    <figure
+                      key={preset.id}
+                      className={`group relative z-[1] mb-2 h-auto w-full cursor-pointer overflow-hidden rounded-2xl transition-all duration-500 ease-out ${
+                        isAnimating
+                          ? "translate-y-0 scale-100 opacity-100"
+                          : "translate-y-4 scale-95 opacity-0"
+                      }`}
+                      style={{
+                        aspectRatio: "0.75 / 1",
+                        transitionDelay: `${150 + columnIndex * 40 + itemIndex * 25}ms`,
+                      }}
+                      onClick={() => {
+                        onSelectPreset(preset.name);
+                        onClose();
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="absolute inset-0 z-10 flex h-full w-full items-end justify-start rounded-2xl bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.7)_80%)] px-3 pb-3 text-start font-bold uppercase ring-0 ring-pink-400 transition-all ring-inset hover:ring-2"
+                      >
+                        <div className="font-heading leading-[100%] text-white opacity-100 transition">
+                          <h4 className="text-xs lg:text-sm">
+                            {preset.name}
+                          </h4>
+                        </div>
+                      </button>
+                      {/* Colorful gradient background */}
+                      <div className={`absolute inset-0 bg-gradient-to-br ${colors.from} ${colors.via} ${colors.to}`} />
+                    </figure>
+                  );
+                })}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

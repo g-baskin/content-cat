@@ -2,12 +2,13 @@
 
 import { useState, memo } from "react";
 import Image from "next/image";
-import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 interface FeaturedCard {
   title: string;
   description: string;
   image: string;
+  presetId: string;
 }
 
 const featuredCards: FeaturedCard[] = [
@@ -15,52 +16,54 @@ const featuredCards: FeaturedCard[] = [
     title: "VIDEO ADS",
     description: "Create scroll-stopping video ads that convert",
     image: "/images/video-ads.jpg",
+    presetId: "video-ads",
   },
   {
     title: "HORROR SHORTS",
     description: "Terrifying short-form content that keeps viewers hooked",
     image: "/images/horror-shorts.jpg",
+    presetId: "horror-shorts",
   },
   {
     title: "EDUCATIONAL",
     description: "Engaging explainers and tutorials that teach",
     image: "/images/educational.jpg",
+    presetId: "educational",
   },
   {
     title: "FUNNY SHORTS",
     description: "Comedy content that gets shares and laughs",
     image: "/images/funny-shorts.jpg",
+    presetId: "funny-shorts",
   },
   {
     title: "VIRAL SHORTS",
     description: "Trending formats optimized for maximum reach",
     image: "/images/viral-shorts.jpg",
+    presetId: "viral-shorts",
   },
   {
     title: "PERSONAL BRANDING",
     description: "Build your online presence with professional content",
     image: "/images/personal-branding.jpg",
+    presetId: "personal-branding",
   },
 ];
 
 const FeaturedCardItem = memo(function FeaturedCardItem({
   card,
   priority = false,
+  onSelect,
 }: {
   card: FeaturedCard;
   priority?: boolean;
+  onSelect: (presetId: string) => void;
 }) {
   const [isLoaded, setIsLoaded] = useState(false);
 
-  const handleClick = () => {
-    toast("Coming soon", {
-      description: `${card.title} will be available in a future update.`,
-    });
-  };
-
   return (
     <button
-      onClick={handleClick}
+      onClick={() => onSelect(card.presetId)}
       className="group w-[38%] flex-shrink-0 text-left"
     >
       <div className="relative aspect-[16/9] overflow-hidden rounded-2xl bg-black/30 backdrop-blur-md">
@@ -98,6 +101,12 @@ const FeaturedCardItem = memo(function FeaturedCardItem({
 });
 
 export default function FeaturedCards() {
+  const router = useRouter();
+
+  const handleSelect = (presetId: string) => {
+    router.push(`/video?preset=${presetId}`);
+  };
+
   return (
     <section>
       <div className="hide-scrollbar flex gap-4 overflow-x-auto pb-2">
@@ -106,6 +115,7 @@ export default function FeaturedCards() {
             key={card.title}
             card={card}
             priority={index < 3}
+            onSelect={handleSelect}
           />
         ))}
       </div>

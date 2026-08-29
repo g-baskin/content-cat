@@ -35,6 +35,8 @@ interface VideoSidebarProps {
   onClearImage: (type: "start" | "end" | "single") => void;
   onSwapImages: () => void;
   onGenerate: () => void;
+  // Preset selection
+  onOpenPresetSelector?: () => void;
 }
 
 export default function VideoSidebar({
@@ -55,6 +57,7 @@ export default function VideoSidebar({
   onClearImage,
   onSwapImages,
   onGenerate,
+  onOpenPresetSelector,
 }: VideoSidebarProps) {
   return (
     <aside className="mb-4 ml-4 flex w-80 flex-col rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl">
@@ -81,6 +84,7 @@ export default function VideoSidebar({
           onImageUpload={onImageUpload}
           onClearImage={onClearImage}
           onSwapImages={onSwapImages}
+          onOpenPresetSelector={onOpenPresetSelector}
         />
       </div>
 

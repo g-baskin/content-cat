@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { apiFetch } from "@/lib/csrf";
 import Header from "@/components/Header";
 import PresetSelector from "@/components/PresetSelector";
 import DeleteConfirmationModal from "@/components/DeleteConfirmationModal";
@@ -13,11 +16,18 @@ import {
 } from "@/components/video";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useVideoGeneration, useVideos, useImageUpload } from "@/hooks";
+import { getVideoPreset } from "@/lib/constants/video-presets";
 import type { VideoModelId } from "@/lib/fal";
 
 function VideoPageContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const presetId = searchParams.get("preset");
+
   const [showPresetSelector, setShowPresetSelector] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isCreatingStoryboard, setIsCreatingStoryboard] = useState(false);
+  const presetAppliedRef = useRef(false);
 
   // Video history management (SWR-cached)
   const {
@@ -72,6 +82,20 @@ function VideoPageContent() {
     onModeChange: (mode) => updateVideoState({ mode }),
   });
 
+  // Apply preset from URL on initial load
+  useEffect(() => {
+    if (presetId && !presetAppliedRef.current) {
+      const preset = getVideoPreset(presetId);
+      if (preset) {
+        presetAppliedRef.current = true;
+        updateVideoState({
+          prompt: preset.suggestedPrompt,
+          aspectRatio: preset.aspectRatio,
+        });
+      }
+    }
+  }, [presetId, updateVideoState]);
+
   // Handle model change with image reset
   const handleModelChangeWithReset = (modelId: VideoModelId) => {
     handleModelChange(modelId, {
@@ -106,6 +130,62 @@ function VideoPageContent() {
     }
   };
 
+  // Create storyboard with current video settings as first scene
+  const handleCreateStoryboard = async () => {
+    setIsCreatingStoryboard(true);
+    try {
+      // Create a new storyboard
+      const storyboardRes = await apiFetch("/api/storyboards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "New Storyboard",
+          description: videoState.prompt || "Created from video page",
+        }),
+      });
+
+      if (!storyboardRes.ok) {
+        if (storyboardRes.status === 401) {
+          toast.error("Please log in to create storyboards");
+          router.push("/login");
+          return;
+        }
+        throw new Error("Failed to create storyboard");
+      }
+
+      const storyboard = await storyboardRes.json();
+
+      // Add the first scene with current settings
+      const sceneRes = await apiFetch(
+        `/api/storyboards/${storyboard.id}/scenes`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: videoState.prompt || "",
+            duration: videoState.duration || 5,
+            aspectRatio: videoState.aspectRatio || "16:9",
+            model: videoState.model || "kling-2.5",
+            service: "fal",
+            startImageUrl: startImageUrl || null,
+          }),
+        }
+      );
+
+      if (!sceneRes.ok) {
+        throw new Error("Failed to add scene");
+      }
+
+      toast.success("Storyboard created!");
+      router.push(`/storyboard/${storyboard.id}`);
+    } catch (error) {
+      console.error("Error creating storyboard:", error);
+      toast.error("Failed to create storyboard");
+    } finally {
+      setIsCreatingStoryboard(false);
+    }
+  };
+
   return (
     <div className="relative flex h-screen flex-col overflow-hidden">
       <Header />
@@ -129,6 +209,7 @@ function VideoPageContent() {
           onClearImage={clearImage}
           onSwapImages={swapImages}
           onGenerate={handleGenerateWithView}
+          onOpenPresetSelector={() => setShowPresetSelector(true)}
         />
 
         {/* Main Content */}
@@ -143,7 +224,7 @@ function VideoPageContent() {
           ) : (
             <>
               {/* Shared Tabs with sliding indicator */}
-              <div className="z-10 mb-4 w-fit">
+              <div className="z-10 mb-4 flex items-center gap-4">
                 <nav className="relative flex gap-1 rounded-xl border border-white/10 bg-black/40 p-1 backdrop-blur-xl">
                   {/* Sliding indicator */}
                   <div
@@ -176,6 +257,37 @@ function VideoPageContent() {
                     How it works
                   </button>
                 </nav>
+
+                {/* Create Storyboard Button */}
+                <button
+                  onClick={handleCreateStoryboard}
+                  disabled={isCreatingStoryboard}
+                  className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-4 py-2 text-xs font-medium text-purple-300 transition-all hover:border-purple-500/50 hover:bg-purple-500/20 disabled:opacity-50"
+                >
+                  {isCreatingStoryboard ? (
+                    <>
+                      <div className="size-3.5 animate-spin rounded-full border-2 border-purple-400/30 border-t-purple-400" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        className="size-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
+                        />
+                      </svg>
+                      Create Storyboard
+                    </>
+                  )}
+                </button>
               </div>
 
               {/* Content area */}
@@ -213,10 +325,26 @@ function VideoPageContent() {
   );
 }
 
+function VideoPageSkeleton() {
+  return (
+    <div className="relative flex h-screen flex-col overflow-hidden">
+      <Header />
+      <div className="flex min-h-0 flex-1 items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="size-8 animate-spin rounded-full border-2 border-zinc-600 border-t-white" />
+          <span className="text-sm text-zinc-400">Loading...</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function VideoPage() {
   return (
     <ErrorBoundary>
-      <VideoPageContent />
+      <Suspense fallback={<VideoPageSkeleton />}>
+        <VideoPageContent />
+      </Suspense>
     </ErrorBoundary>
   );
 }

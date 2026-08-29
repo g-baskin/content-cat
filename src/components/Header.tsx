@@ -8,10 +8,12 @@ import { apiFetch } from "@/lib/csrf";
 const navItems = [
   { label: "Image", href: "/image" },
   { label: "Video", href: "/video" },
+  { label: "Storyboard", href: "/storyboard" },
   { label: "Workflow", href: "/workflow" },
   { label: "Characters", href: "/create-character" },
   { label: "Products", href: "/products" },
   { label: "Prompts", href: "/prompts" },
+  { label: "Settings", href: "/settings" },
 ];
 
 const FolderIcon = () => (

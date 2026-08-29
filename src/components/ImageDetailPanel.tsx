@@ -11,11 +11,16 @@ interface ImageDetailPanelProps {
     prompt: string;
     aspectRatio: string;
     createdAt: string;
+    generator?: string;
+    generatorModel?: string;
   };
   onClose: () => void;
   onDelete: (id: string) => void;
   onDownload: (url: string, prompt: string) => void;
   onRecreate: (prompt: string) => void;
+  onVideo?: (imageUrl: string, prompt: string) => void;
+  onUpscale?: (imageUrl: string, prompt: string) => void;
+  onEdit?: (imageUrl: string, prompt: string) => void;
 }
 
 const CloseIcon = () => (
@@ -190,8 +195,34 @@ export default function ImageDetailPanel({
   onDelete,
   onDownload,
   onRecreate,
+  onVideo,
+  onUpscale,
+  onEdit,
 }: ImageDetailPanelProps) {
   const [isAdditionalOpen, setIsAdditionalOpen] = useState(false);
+
+  // Helper function to get model display name
+  const getModelDisplayName = () => {
+    if (!image.generatorModel) return "Unknown";
+
+    // Create a map of model values to display names
+    const modelNames: Record<string, string> = {
+      "nano-banana-pro": "Nano Banana Pro",
+      "seedream-4.5": "Seedream 4.5",
+      "midjourney": "Midjourney v6",
+      "niji-6": "Niji 6",
+      "gemini-2.5-flash-image": "Gemini 2.5 Flash",
+      "gemini-3-pro-image-preview": "Gemini 3 Pro",
+      "realism": "Realism",
+      "fluid": "Fluid",
+      "zen": "Zen",
+      "flexible": "Flexible",
+      "super_real": "Super Real",
+      "editorial_portraits": "Editorial Portraits",
+    };
+
+    return modelNames[image.generatorModel] || image.generatorModel;
+  };
 
   const copyPrompt = () => {
     navigator.clipboard.writeText(image.prompt);
@@ -290,7 +321,7 @@ export default function ImageDetailPanel({
                 <div className="grid grid-cols-[1fr_auto] px-4 py-3.5">
                   <p className="text-sm text-zinc-300">Model</p>
                   <p className="text-sm font-medium text-white">
-                    Nano Banana Pro
+                    {getModelDisplayName()}
                   </p>
                 </div>
               </div>
@@ -361,7 +392,9 @@ export default function ImageDetailPanel({
             {/* Video */}
             <button
               type="button"
-              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10"
+              onClick={() => onVideo?.(image.url, image.prompt)}
+              disabled={!onVideo}
+              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <VideoIcon />
               Video
@@ -380,7 +413,9 @@ export default function ImageDetailPanel({
             {/* Upscale */}
             <button
               type="button"
-              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10"
+              onClick={() => onUpscale?.(image.url, image.prompt)}
+              disabled={!onUpscale}
+              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <UpscaleIcon />
               Upscale
@@ -389,7 +424,9 @@ export default function ImageDetailPanel({
             {/* Edit */}
             <button
               type="button"
-              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10"
+              onClick={() => onEdit?.(image.url, image.prompt)}
+              disabled={!onEdit}
+              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <EditIcon />
               Edit

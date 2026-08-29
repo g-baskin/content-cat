@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { toast } from "sonner";
 import { NestedDropdown, SimpleDropdown } from "@/components/Dropdown";
 import type {
   VideoModelId,
@@ -40,6 +39,8 @@ interface CreateVideoFormProps {
   ) => void;
   onClearImage: (type: "start" | "end" | "single") => void;
   onSwapImages: () => void;
+  // Preset selection
+  onOpenPresetSelector?: () => void;
 }
 
 export default function CreateVideoForm({
@@ -58,6 +59,7 @@ export default function CreateVideoForm({
   onImageUpload,
   onClearImage,
   onSwapImages,
+  onOpenPresetSelector,
 }: CreateVideoFormProps) {
   // Local UI state
   const [selectedPreset] = useState("General");
@@ -128,7 +130,7 @@ export default function CreateVideoForm({
       {/* Preset Card */}
       <figure
         className="group relative aspect-[2.3] w-full cursor-pointer overflow-hidden rounded-xl select-none"
-        onClick={() => toast.info("Coming soon")}
+        onClick={onOpenPresetSelector}
       >
         <div className="absolute inset-0 bg-gradient-to-br from-teal-900 via-teal-800 to-amber-900" />
         <div
@@ -148,7 +150,7 @@ export default function CreateVideoForm({
           className="absolute top-1.5 right-1.5 z-20 flex h-6 items-center gap-1 rounded-lg border border-white/10 bg-black/60 px-2 text-xs text-white backdrop-blur-sm transition-colors hover:bg-pink-400 hover:text-black"
           onClick={(e) => {
             e.stopPropagation();
-            toast.info("Coming soon");
+            onOpenPresetSelector?.();
           }}
         >
           <EditIcon />

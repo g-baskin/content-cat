@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import {
-  createNanoBananaProClient,
-  createSeedream45Client,
-  parseFalError,
-  type NanoBananaProAspectRatio,
-  type NanoBananaProResolution,
-  type NanoBananaProOutputFormat,
-  type Seedream45AspectRatio,
-  type Seedream45OutputFormat,
-} from "@/lib/fal";
+import { getGeneratorClient, parseGeneratorError } from "@/lib/generators";
 import { getApiKey } from "@/lib/services/apiKeyService";
 import {
   checkRateLimit,
@@ -21,19 +12,20 @@ import { withTimeout, TIMEOUTS, TimeoutError } from "@/lib/utils/timeout";
 import { requireAuth } from "@/lib/auth-helpers";
 import { logger } from "@/lib/logger";
 import { resolveImageForFal } from "@/lib/storage";
+import { prisma } from "@/lib/prisma";
 
 // Zod schema for image generation request
 const generateImageSchema = z.object({
   prompt: z.string().min(1, "Prompt is required").max(2500, "Prompt too long"),
-  model: z.enum(["nano-banana-pro", "seedream-4.5"]).default("nano-banana-pro"),
-  aspectRatio: z.enum(["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "9:21"]).default("1:1"),
-  resolution: z.enum(["1K", "2K"]).default("1K"),
+  service: z.enum(["fal", "midjourney", "google-gemini", "freepik"]).default("fal"),
+  model: z.string().default("nano-banana-pro"),
+  aspectRatio: z.string().default("1:1"),
+  resolution: z.enum(["1K", "2K"]).optional(),
   outputFormat: z.enum(["png", "jpeg", "webp"]).default("png"),
   imageUrls: z.array(z.string()).max(10, "Maximum 10 reference images").optional(),
   numImages: z.number().int().min(1).max(6).default(1),
   enableWebSearch: z.boolean().default(false),
   enableSafetyChecker: z.boolean().default(true),
-  // Seedream 4.5 specific parameters
   strength: z.number().min(0).max(1).optional(),
   guidanceScale: z.number().min(1).max(20).optional(),
   seed: z.number().int().optional(),
@@ -63,6 +55,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let service: "fal" | "midjourney" | "google-gemini" | "freepik" = "fal";
+
   try {
     const body = await request.json();
     const parseResult = generateImageSchema.safeParse(body);
@@ -77,21 +71,32 @@ export async function POST(request: NextRequest) {
 
     const {
       prompt,
+      service: parsedService,
       model,
       aspectRatio,
-      resolution,
       outputFormat,
       imageUrls,
       numImages,
-      enableWebSearch,
       enableSafetyChecker,
       strength,
-      guidanceScale,
       seed,
     } = parseResult.data;
 
-    // Resolve local file URLs to base64 for FAL.ai
-    // (FAL.ai can't access our local /api/files/ URLs)
+    service = parsedService;
+
+    // Get API key for the requested service
+    const apiKey = await getApiKey(user!.id, service);
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          error: `No API key configured for ${service}. Add your key in Settings.`,
+          code: "NO_API_KEY",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Resolve image URLs for services that need it
     const resolvedImageUrls: string[] = [];
     if (imageUrls && Array.isArray(imageUrls)) {
       for (const url of imageUrls) {
@@ -100,138 +105,85 @@ export async function POST(request: NextRequest) {
           resolvedImageUrls.push(resolved);
         }
       }
-    }
 
-    // Validate image sizes (max ~5MB base64 per image)
-    const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
-    for (const url of resolvedImageUrls) {
-      if (url && url.length > MAX_IMAGE_SIZE) {
-        return NextResponse.json(
-          {
-            error:
-              "Reference image is too large. Please use a smaller image (max 5MB).",
-          },
-          { status: 400 }
-        );
+      // Validate image sizes
+      const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+      for (const url of resolvedImageUrls) {
+        if (url && url.length > MAX_IMAGE_SIZE) {
+          return NextResponse.json(
+            {
+              error: "Reference image is too large. Please use a smaller image (max 5MB).",
+            },
+            { status: 400 }
+          );
+        }
       }
     }
 
-    const apiKey = await getApiKey(user!.id);
-    if (!apiKey) {
+    // Get the generator client
+    const generator = await getGeneratorClient(service, apiKey);
+
+    // Set the model if specified and generator supports it
+    if (model && generator.setModel) {
+      generator.setModel(model);
+    }
+
+    // Check if generator supports editing with images
+    const capabilities = generator.getCapabilities();
+    if (resolvedImageUrls.length > 0 && !capabilities.supportsEditing) {
       return NextResponse.json(
         {
-          error: "No API key. Add your fal.ai key in Settings.",
-          code: "NO_API_KEY",
+          error: `Image editing is not supported with ${service}`,
         },
         { status: 400 }
       );
     }
 
-    // Check if this is an edit request (has image URLs)
-    const hasImages = resolvedImageUrls.length > 0;
+    // Prepare request
+    const generationRequest = {
+      prompt,
+      numImages,
+      aspectRatio,
+      outputFormat,
+      enableSafetyChecker,
+      seed,
+      strength,
+    };
 
-    // Handle Seedream 4.5 model
-    if (model === "seedream-4.5") {
-      const seedreamClient = createSeedream45Client(apiKey);
+    // Execute generation with timeout
+    const result = await withTimeout(
+      resolvedImageUrls.length > 0
+        ? generator.editImage({
+            ...generationRequest,
+            imageUrls: resolvedImageUrls,
+          })
+        : generator.generateImage(generationRequest),
+      TIMEOUTS.IMAGE_GENERATION,
+      "Image generation timed out. Please try again."
+    );
 
-      if (hasImages) {
-        // Image editing mode with reference images
-        const result = await withTimeout(
-          seedreamClient.editImage({
-            prompt,
-            image_urls: resolvedImageUrls,
-            aspect_ratio: (aspectRatio || "1:1") as Seedream45AspectRatio,
-            output_format: (outputFormat || "png") as Seedream45OutputFormat,
-            num_images: numImages || 1,
-            enable_safety_checker: enableSafetyChecker ?? true,
-            strength: strength,
-            guidance_scale: guidanceScale,
-            seed: seed,
-          }),
-          TIMEOUTS.IMAGE_GENERATION,
-          "Image generation timed out. Please try again."
-        );
-
-        return NextResponse.json({
-          success: true,
-          images: result.images,
-          resultUrls: result.images.map((img) => img.url),
-          seed: result.seed,
-        });
-      } else {
-        // Text-to-image mode
-        const result = await withTimeout(
-          seedreamClient.generateImage({
-            prompt,
-            aspect_ratio: (aspectRatio || "1:1") as Seedream45AspectRatio,
-            output_format: (outputFormat || "png") as Seedream45OutputFormat,
-            num_images: numImages || 1,
-            enable_safety_checker: enableSafetyChecker ?? true,
-            seed: seed,
-          }),
-          TIMEOUTS.IMAGE_GENERATION,
-          "Image generation timed out. Please try again."
-        );
-
-        return NextResponse.json({
-          success: true,
-          images: result.images,
-          resultUrls: result.images.map((img) => img.url),
-          seed: result.seed,
-        });
-      }
-    }
-
-    // Handle Nano Banana Pro model (default)
-    const nanoBananaClient = createNanoBananaProClient(apiKey);
-
-    if (hasImages) {
-      // Image editing mode with reference images (with timeout)
-      const result = await withTimeout(
-        nanoBananaClient.editImage({
+    // Save to database
+    for (const imageUrl of result.resultUrls) {
+      await prisma.generatedImage.create({
+        data: {
+          userId: user!.id,
+          url: imageUrl,
           prompt,
-          image_urls: resolvedImageUrls,
-          aspect_ratio: (aspectRatio || "auto") as NanoBananaProAspectRatio,
-          resolution: (resolution || "1K") as NanoBananaProResolution,
-          output_format: (outputFormat || "png") as NanoBananaProOutputFormat,
-          num_images: numImages || 1,
-          enable_safety_checker: enableSafetyChecker ?? true,
-        }),
-        TIMEOUTS.IMAGE_GENERATION,
-        "Image generation timed out. Please try again."
-      );
-
-      return NextResponse.json({
-        success: true,
-        images: result.images,
-        resultUrls: result.images.map((img) => img.url),
-        description: result.description,
-        seed: result.seed,
-      });
-    } else {
-      // Text-to-image mode (with timeout)
-      const result = await withTimeout(
-        nanoBananaClient.generateImage({
-          prompt,
-          aspect_ratio: (aspectRatio || "1:1") as NanoBananaProAspectRatio,
-          resolution: (resolution || "1K") as NanoBananaProResolution,
-          output_format: (outputFormat || "png") as NanoBananaProOutputFormat,
-          num_images: numImages || 1,
-          enable_web_search: enableWebSearch ?? false,
-          enable_safety_checker: enableSafetyChecker ?? true,
-        }),
-        TIMEOUTS.IMAGE_GENERATION,
-        "Image generation timed out. Please try again."
-      );
-
-      return NextResponse.json({
-        success: true,
-        images: result.images,
-        resultUrls: result.images.map((img) => img.url),
-        description: result.description,
-        seed: result.seed,
+          aspectRatio: aspectRatio || "1:1",
+          generator: service,
+          generatorModel: model,
+        },
       });
     }
+
+    return NextResponse.json({
+      success: true,
+      images: result.images,
+      resultUrls: result.resultUrls,
+      description: result.description,
+      seed: result.seed,
+      jobId: result.jobId,
+    });
   } catch (error) {
     logger.error("Image generation error", {
       error: error instanceof Error ? error.message : "Unknown error",
@@ -247,7 +199,7 @@ export async function POST(request: NextRequest) {
 
     const errorMsg =
       error instanceof Error ? error.message : "Failed to generate image";
-    const parsed = parseFalError(errorMsg);
+    const parsed = parseGeneratorError(errorMsg, service);
     return NextResponse.json(parsed, { status: 500 });
   }
 }

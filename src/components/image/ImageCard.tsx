@@ -43,7 +43,7 @@ const ImageCard = memo(function ImageCard({
 
       <Image
         src={image.url}
-        alt={image.prompt}
+        alt=""
         fill
         sizes="(max-width: 768px) 50vw, 25vw"
         unoptimized

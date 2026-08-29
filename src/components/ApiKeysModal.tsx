@@ -20,25 +20,36 @@ interface ApiKeysModalProps {
 }
 
 const SERVICES = [
-  { id: "fal", name: "fal.ai", description: "Image & video generation API" },
+  { id: "fal", name: "FAL.ai", description: "Nano Banana Pro & Seedream" },
+  { id: "midjourney", name: "Midjourney", description: "Midjourney v6 & Niji 6" },
+  { id: "google-gemini", name: "Google Gemini", description: "Gemini Flash & Pro" },
+  { id: "freepik", name: "Freepik", description: "Mystic, Flux & Seedream" },
 ];
 
 // Validation patterns for different services
 const API_KEY_VALIDATORS: Record<
   string,
   {
-    pattern: RegExp;
+    pattern?: RegExp;
     example: string;
     description: string;
   }
 > = {
   fal: {
-    // fal.ai keys are: UUID:32-char-hex (e.g., 8cc1454c-94ce-4036-a5eb-47391dbf99dd:b6982599b42886db4513d7a2096f5604)
-    pattern:
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{32}$/i,
-    example:
-      "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-    description: "UUID followed by colon and 32-character secret",
+    example: "Any FAL.ai API key (starts with fal_ or contains UUID:hex)",
+    description: "Get from https://fal.ai/dashboard/keys",
+  },
+  midjourney: {
+    example: "Your Midjourney API key",
+    description: "Get from https://docs.midjourney.com/",
+  },
+  "google-gemini": {
+    example: "Your Google API key",
+    description: "Get from https://ai.google.dev/",
+  },
+  freepik: {
+    example: "Your Freepik API key",
+    description: "Get from https://docs.freepik.com/",
   },
 };
 
@@ -48,7 +59,6 @@ function validateApiKey(
 ): { isValid: boolean; error?: string } {
   const validator = API_KEY_VALIDATORS[service];
   if (!validator) {
-    // No validator for this service, accept any non-empty key
     return { isValid: key.trim().length > 0 };
   }
 
@@ -56,7 +66,8 @@ function validateApiKey(
     return { isValid: false, error: "API key is required" };
   }
 
-  if (!validator.pattern.test(key.trim())) {
+  // Only validate pattern if it exists
+  if (validator.pattern && !validator.pattern.test(key.trim())) {
     return {
       isValid: false,
       error: `Invalid format. Expected: ${validator.example}`,

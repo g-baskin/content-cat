@@ -15,7 +15,12 @@ import {
   ImageAddIcon,
 } from "@/components/icons";
 import {
-  modelOptions,
+  generatorServiceOptions,
+  falModelOptions,
+  midjourneyModelOptions,
+  geminiModelOptions,
+  freepikModelOptions,
+  legacyModelOptions,
   aspectRatioOptions,
   resolutionOptions,
   outputFormatOptions,
@@ -33,6 +38,7 @@ import type {
 interface ImagePromptFormProps {
   onSubmit?: (data: {
     prompt: string;
+    service: string;
     model: string;
     count: number;
     aspectRatio: string;
@@ -41,6 +47,7 @@ interface ImagePromptFormProps {
     referenceImages: string[];
   }) => void;
   initialPrompt?: string;
+  initialService?: string;
   initialModel?: string;
   initialSubModel?: string;
   recreateData?: {
@@ -54,13 +61,15 @@ interface ImagePromptFormProps {
 export default function ImagePromptForm({
   onSubmit,
   initialPrompt = "",
+  initialService,
   initialModel,
   initialSubModel,
   recreateData,
   editData,
 }: ImagePromptFormProps) {
   const [prompt, setPrompt] = useState(initialPrompt);
-  const [model, setModel] = useState(initialModel || "nano_banana_2");
+  const [service, setService] = useState(initialService || "fal");
+  const [model, setModel] = useState(initialModel || "nano-banana-pro");
   const [subModel, setSubModel] = useState(initialSubModel || "");
   const [ugcCharacter, setUgcCharacter] = useState("");
   const [ugcProduct, setUgcProduct] = useState("");
@@ -347,6 +356,7 @@ export default function ImagePromptForm({
 
     onSubmit?.({
       prompt,
+      service,
       model,
       count: imageCount,
       aspectRatio,
@@ -457,9 +467,41 @@ export default function ImagePromptForm({
 
           {/* Controls row */}
           <div className="flex h-9 items-center gap-2">
+            {/* Service selector */}
+            <SelectDropdown
+              options={generatorServiceOptions}
+              value={service}
+              onChange={(value) => {
+                setService(value);
+                // Reset model when service changes
+                if (value === "fal") {
+                  setModel("nano-banana-pro");
+                } else if (value === "midjourney") {
+                  setModel("midjourney");
+                } else if (value === "google-gemini") {
+                  setModel("gemini-2.5-flash-image");
+                } else if (value === "freepik") {
+                  setModel("flux-dev");
+                }
+                setSubModel("");
+                setUgcCharacter("");
+                setUgcProduct("");
+              }}
+            />
+
             {/* Model selector */}
             <SelectDropdown
-              options={modelOptions}
+              options={
+                service === "fal"
+                  ? falModelOptions
+                  : service === "midjourney"
+                    ? midjourneyModelOptions
+                    : service === "google-gemini"
+                      ? geminiModelOptions
+                      : service === "freepik"
+                        ? freepikModelOptions
+                        : legacyModelOptions
+              }
               value={model}
               onChange={(value) => {
                 setModel(value);

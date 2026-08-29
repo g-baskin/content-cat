@@ -1,51 +1,44 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth-helpers";
-import {
-  encryptApiKey,
-  decryptApiKey,
-  maskApiKey,
-} from "@/lib/services/apiKeyService";
-import { logger } from "@/lib/logger";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  createRateLimitHeaders,
-  RATE_LIMITS,
-} from "@/lib/rate-limit";
+import { encryptApiKey, decryptApiKey, maskApiKey } from "@/lib/services/apiKeyService";
 
-// GET /api/api-keys - List all API keys (masked)
-export async function GET(request: Request) {
-  const { user, error } = await requireAuth();
-  if (error) return error;
+const addApiKeySchema = z.object({
+  service: z.enum(["fal", "midjourney", "google-gemini", "freepik"]),
+  apiKey: z.string().min(1, "API key is required"),
+});
 
-  // Rate limit sensitive operations
-  const clientId = getClientIdentifier(request);
-  const rateLimitResult = await checkRateLimit(clientId, RATE_LIMITS.sensitive);
-  if (!rateLimitResult.success) {
-    return NextResponse.json(
-      { error: "Too many requests. Please try again later." },
-      { status: 429, headers: createRateLimitHeaders(rateLimitResult) }
-    );
-  }
+/**
+ * GET /api/api-keys
+ * Get all API keys for the current user (masked)
+ */
+export async function GET() {
+  const { user, error: authError } = await requireAuth();
+  if (authError) return authError;
 
   try {
     const apiKeys = await prisma.apiKey.findMany({
       where: { userId: user!.id },
-      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        service: true,
+        isActive: true,
+        createdAt: true,
+        key: true,
+      },
     });
 
-    // Decrypt and mask the actual key values for security
     const maskedKeys = apiKeys.map((key) => ({
-      ...key,
-      key: maskApiKey(decryptApiKey(key.key)),
+      id: key.id,
+      service: key.service,
+      isActive: key.isActive,
+      createdAt: key.createdAt,
+      maskedKey: maskApiKey(decryptApiKey(key.key)),
     }));
 
     return NextResponse.json(maskedKeys);
-  } catch (error) {
-    logger.error("Failed to fetch API keys", {
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+  } catch {
     return NextResponse.json(
       { error: "Failed to fetch API keys" },
       { status: 500 }
@@ -53,103 +46,71 @@ export async function GET(request: Request) {
   }
 }
 
-// POST /api/api-keys - Create or update an API key
-export async function POST(request: Request) {
-  const { user, error } = await requireAuth();
-  if (error) return error;
-
-  // Rate limit sensitive operations
-  const clientId = getClientIdentifier(request);
-  const rateLimitResult = await checkRateLimit(clientId, RATE_LIMITS.sensitive);
-  if (!rateLimitResult.success) {
-    return NextResponse.json(
-      { error: "Too many requests. Please try again later." },
-      { status: 429, headers: createRateLimitHeaders(rateLimitResult) }
-    );
-  }
+/**
+ * POST /api/api-keys
+ * Add or update an API key
+ */
+export async function POST(request: NextRequest) {
+  const { user, error: authError } = await requireAuth();
+  if (authError) return authError;
 
   try {
     const body = await request.json();
-    const { name, key, service } = body;
+    const { service, apiKey } = addApiKeySchema.parse(body);
 
-    if (!name || !key || !service) {
+    const existing = await prisma.apiKey.findUnique({
+      where: { userId_service: { userId: user!.id, service } },
+    });
+
+    const encryptedKey = encryptApiKey(apiKey);
+
+    if (existing) {
+      const updated = await prisma.apiKey.update({
+        where: { id: existing.id },
+        data: {
+          key: encryptedKey,
+          isActive: true,
+        },
+      });
+
+      return NextResponse.json({
+        id: updated.id,
+        service: updated.service,
+        isActive: updated.isActive,
+        maskedKey: maskApiKey(apiKey),
+        message: "API key updated successfully",
+      });
+    } else {
+      const created = await prisma.apiKey.create({
+        data: {
+          userId: user!.id,
+          service,
+          key: encryptedKey,
+          isActive: true,
+          name: `${service} API Key`,
+        },
+      });
+
       return NextResponse.json(
-        { error: "Name, key, and service are required" },
+        {
+          id: created.id,
+          service: created.service,
+          isActive: created.isActive,
+          maskedKey: maskApiKey(apiKey),
+          message: "API key added successfully",
+        },
+        { status: 201 }
+      );
+    }
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: error.issues[0]?.message || "Validation error" },
         { status: 400 }
       );
     }
-
-    // Encrypt the API key before storing
-    const encryptedKey = encryptApiKey(key);
-
-    // Upsert - create or update if service already exists for this user
-    const apiKey = await prisma.apiKey.upsert({
-      where: { userId_service: { userId: user!.id, service } },
-      update: { name, key: encryptedKey, isActive: true },
-      create: {
-        userId: user!.id,
-        name,
-        key: encryptedKey,
-        service,
-        isActive: true,
-      },
-    });
-
-    return NextResponse.json(
-      {
-        ...apiKey,
-        key: maskApiKey(key), // Mask the original key for response
-      },
-      { status: 201 }
-    );
-  } catch (error) {
-    logger.error("Failed to save API key", {
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
     return NextResponse.json(
       { error: "Failed to save API key" },
-      { status: 500 }
-    );
-  }
-}
-
-// DELETE /api/api-keys - Delete an API key by service
-export async function DELETE(request: Request) {
-  const { user, error } = await requireAuth();
-  if (error) return error;
-
-  // Rate limit sensitive operations
-  const clientId = getClientIdentifier(request);
-  const rateLimitResult = await checkRateLimit(clientId, RATE_LIMITS.sensitive);
-  if (!rateLimitResult.success) {
-    return NextResponse.json(
-      { error: "Too many requests. Please try again later." },
-      { status: 429, headers: createRateLimitHeaders(rateLimitResult) }
-    );
-  }
-
-  try {
-    const { searchParams } = new URL(request.url);
-    const service = searchParams.get("service");
-
-    if (!service) {
-      return NextResponse.json(
-        { error: "Service parameter is required" },
-        { status: 400 }
-      );
-    }
-
-    await prisma.apiKey.deleteMany({
-      where: { userId: user!.id, service },
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    logger.error("Failed to delete API key", {
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
-    return NextResponse.json(
-      { error: "Failed to delete API key" },
       { status: 500 }
     );
   }
