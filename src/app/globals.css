@@ -18,7 +18,15 @@ body {
 }
 
 body {
-  background: var(--background);
+  min-height: 100svh;
+  background-color: var(--background);
+  background-image:
+    linear-gradient(rgba(5, 5, 14, 0.48), rgba(5, 5, 14, 0.68)),
+    url("/images/content-cat-background.webp");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: var(--foreground);
   font-family:
     ui-sans-serif,
