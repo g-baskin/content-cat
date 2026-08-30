@@ -34,7 +34,7 @@ sources:
 getApiKey(userId: string, service = "fal"): Promise<string | null>
 ```
 
-The underlying decryption helper supports encrypted and legacy plaintext values (`src/lib/services/apiKeyService.ts:12-29`). Database or decryption-path lookup errors are logged and key retrieval returns `null` (`src/lib/services/apiKeyService.ts:58-65`). Current generator and TTS endpoints pass the authenticated user ID and selected provider, so key retrieval is provider-specific (`src/app/api/generate-image/route.ts:104-114`, `src/app/api/generate-video/route.ts:140-157`, `src/app/api/tts/generate/route.ts:36-44`).
+The underlying decryption helper supports encrypted and legacy plaintext values (`src/lib/services/apiKeyService.ts:12-29`). Database or decryption-path lookup errors are logged and key retrieval returns `null` (`src/lib/services/apiKeyService.ts:58-65`). Current generator and TTS endpoints pass the authenticated user ID and selected provider, so key retrieval is provider-specific (`src/app/api/generate-image/route.ts:115-125`, `src/app/api/generate-video/route.ts:140-157`, `src/app/api/tts/generate/route.ts:36-44`).
 
 ## Connections
 

@@ -44,9 +44,9 @@ Manual Upscale is a separate image-tools flow. It currently requests 2×, choose
 
 Search is local and limited to the selected category's name and prompt fields. Switching categories clears the query. The star is an import-provenance marker, not a favorite control. “Use in Image” URL-encodes only the preset prompt into `/image?prompt=...`; the image page initializes its prompt from that query parameter but does not persist a preset ID, source, camera choice, provider, or model association. In particular, camera names and “8K resolution” enhancement text are prompt vocabulary and do not select hardware or change the generation resolution field.
 
-Source labels preserve the declared import provenance: camera and lens items come from KingAI cinema presets, shots from KingAI product-shot presets, styles from KingAI ad-style presets, and lighting/enhancement modifiers from research-hub enhancement tags. Maintain stable IDs and explicit source labels when updating the catalog because no database migration or remote reconciliation layer exists.
+The large `other_apps/` import corpus is local source material, is ignored at the repository root, and is not a runtime dependency or maintained documentation surface. Runtime behavior comes from the checked-in preset constants. Their source labels preserve declared import provenance only; they do not verify authorship, licensing, trust, or a live relationship to the source applications. Maintain stable IDs and explicit labels when updating the checked-in catalog because no database migration or remote reconciliation layer exists.
 
-**Code references:** `src/app/presets/page.tsx`, `src/lib/imported-presets/catalog.ts`, `src/lib/imported-presets/cameras.ts`, `src/app/image/page.tsx`, `src/components/Header.tsx`.
+**Code and configuration references:** `.gitignore`, `src/app/presets/page.tsx`, `src/lib/imported-presets/catalog.ts`, `src/lib/imported-presets/cameras.ts`, `src/app/image/page.tsx`, `src/components/Header.tsx`.
 
 ## Per-user API keys
 
@@ -59,6 +59,8 @@ Client-side format validation requires only non-empty text for all four services
 Encryption uses AES-256-GCM with a random 16-byte IV and authentication tag. `ENCRYPTION_KEY` is mandatory in production. A 64-character value is interpreted as a raw hexadecimal 256-bit key; another non-empty value is expanded with scrypt. Development may derive a key from `SESSION_SECRET` with a different salt.
 
 The encryption key is part of persisted-data compatibility: changing from the development fallback to `ENCRYPTION_KEY`, or rotating either secret without re-encrypting records, means existing ciphertext can no longer be decrypted. Preserve the effective key across restarts and deployments, and migrate stored keys deliberately before rotation.
+
+Provider credential values must never be embedded in troubleshooting or testing documents, examples, copied commands, or logs. Use placeholders or masked output in documentation. When a real provider credential is required, save it for the signed-in user through the API-key flow so the value is encrypted in that user's `ApiKey` record rather than preserved in a document or repository file.
 
 The key-management endpoint accepts only the four image-provider service names represented in the modal. This is narrower than the set of implemented video/TTS adapters. F5-TTS reuses FAL.ai. Also, storyboard dialogue generation currently queries the `ApiKey` row directly rather than using `getApiKey()`; unlike the standalone TTS route, it therefore does not pass stored encrypted credentials through the normal decryption helper.
 

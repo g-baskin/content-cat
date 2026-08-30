@@ -97,6 +97,14 @@ Start with a clear title and a short category/version/date/status line when usef
 7. Never edit aggregated documentation mirrors.
 8. Never write under `library/notes/`.
 9. Never create new content in schema-v1 paths outside the wiki exception.
+10. Never place actual provider credentials in troubleshooting or testing documents, examples, copied commands, or logs. Use placeholders or masked values; real per-user provider keys belong in the application's encrypted `ApiKey` storage.
+
+## Project-specific source boundaries
+
+- The ignored root `other_apps/` directory is a local import corpus, not maintained documentation or a runtime dependency. Durable preset behavior must be documented from the checked-in catalog under `src/lib/imported-presets/` and its consumers. Imported preset source labels record declared provenance only; they do not establish verified authorship, licensing, trust, or a live source integration.
+- Root-level troubleshooting and testing artifacts are disposable working material, not canonical documentation. The stale artifacts removed during the current cleanup are superseded by maintained `library/knowledge/` documents; migrate any future durable conclusion into the library instead of restoring a parallel root document.
+
+**Code and configuration references:** `.gitignore`, `src/lib/imported-presets/catalog.ts`, `src/lib/imported-presets/cameras.ts`, `src/lib/services/apiKeyService.ts`, `src/app/api/api-keys/route.ts`, `prisma/schema.prisma`.
 
 ## Ownership
 

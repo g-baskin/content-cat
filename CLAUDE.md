@@ -2,6 +2,14 @@
 
 Self-hosted AI media generation platform — images (fal.ai, Midjourney, Gemini, Freepik), videos (fal.ai, Sora, Runway, Pika, Luma), TTS (ElevenLabs, OpenAI, F5-TTS, Fish Audio), and a visual node-workflow editor for chaining them.
 
+## Change Management
+
+- `dev` is always the base and integration branch; every working branch starts from current `dev`.
+- All implementation happens on working branches, never directly on `dev`, `qa`, or `main`.
+- Finish each change by committing its branch, merging and pushing it back to `dev`, then promoting `dev` → `qa` → `main`.
+- After merge and push, retire the working branch and create the next branch from updated `dev`.
+- Release tags use `vX.Y.Z` from `main`; the tag is the deployed version.
+
 ## Releases
 
 Tag-push triggers `.github/workflows/release.yml` — creates GitHub release, attaches `scripts/install.sh` with SHA256 checksum, auto-generates notes. No CI tests run during release.
