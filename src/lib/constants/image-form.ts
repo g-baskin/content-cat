@@ -65,7 +65,8 @@ export const aspectRatioOptions = [
 export const resolutionOptions = [
   { value: "1K", label: "1K" },
   { value: "2K", label: "2K" },
-  { value: "4K", label: "4K" },
+  { value: "4K", label: "4K (higher cost)" },
+  { value: "8K", label: "8K (4K + 2× upscale, extra cost)" },
 ];
 
 export const outputFormatOptions = [

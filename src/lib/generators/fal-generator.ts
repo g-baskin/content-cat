@@ -23,7 +23,17 @@ import {
 import { parseFalError } from "./errors";
 
 const FAL_CAPABILITIES: GeneratorCapabilities = {
-  supportedAspectRatios: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "9:21"],
+  supportedAspectRatios: [
+    "1:1",
+    "16:9",
+    "9:16",
+    "4:3",
+    "3:4",
+    "3:2",
+    "2:3",
+    "21:9",
+    "9:21",
+  ],
   supportedFormats: ["png", "jpeg", "webp"],
   maxImages: 6,
   maxReferenceImages: 14,
@@ -40,7 +50,10 @@ export class FalGenerator implements IImageGenerator {
   private apiKey: string;
   private model: "nano-banana-pro" | "seedream-4.5";
 
-  constructor(apiKey: string, model: "nano-banana-pro" | "seedream-4.5" = "nano-banana-pro") {
+  constructor(
+    apiKey: string,
+    model: "nano-banana-pro" | "seedream-4.5" = "nano-banana-pro"
+  ) {
     if (!apiKey) {
       throw new Error("API key is required for FAL generator");
     }
@@ -51,7 +64,9 @@ export class FalGenerator implements IImageGenerator {
   /**
    * Generate image from text prompt
    */
-  async generateImage(request: BaseGenerationRequest): Promise<GeneratorResponse> {
+  async generateImage(
+    request: BaseGenerationRequest
+  ): Promise<GeneratorResponse> {
     try {
       if (this.model === "seedream-4.5") {
         return this.generateImageSeedream(request);
@@ -59,7 +74,8 @@ export class FalGenerator implements IImageGenerator {
         return this.generateImageNanoBanana(request);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to generate image";
+      const message =
+        error instanceof Error ? error.message : "Failed to generate image";
       const parsed = parseFalError(message);
       throw new Error(`${parsed.error} (${parsed.code})`);
     }
@@ -76,7 +92,8 @@ export class FalGenerator implements IImageGenerator {
         return this.editImageNanoBanana(request);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to edit image";
+      const message =
+        error instanceof Error ? error.message : "Failed to edit image";
       const parsed = parseFalError(message);
       throw new Error(`${parsed.error} (${parsed.code})`);
     }
@@ -120,8 +137,9 @@ export class FalGenerator implements IImageGenerator {
     const result = await client.generateImage({
       prompt: request.prompt,
       aspect_ratio: (request.aspectRatio || "1:1") as NanoBananaProAspectRatio,
-      resolution: (request.outputFormat === "webp" ? "1K" : "1K") as NanoBananaProResolution,
-      output_format: (request.outputFormat || "png") as NanoBananaProOutputFormat,
+      resolution: (request.resolution || "1K") as NanoBananaProResolution,
+      output_format: (request.outputFormat ||
+        "png") as NanoBananaProOutputFormat,
       num_images: request.numImages || 1,
       enable_safety_checker: request.enableSafetyChecker ?? true,
     });
@@ -144,8 +162,9 @@ export class FalGenerator implements IImageGenerator {
       prompt: request.prompt,
       image_urls: request.imageUrls,
       aspect_ratio: (request.aspectRatio || "auto") as NanoBananaProAspectRatio,
-      resolution: "1K" as NanoBananaProResolution,
-      output_format: (request.outputFormat || "png") as NanoBananaProOutputFormat,
+      resolution: (request.resolution || "1K") as NanoBananaProResolution,
+      output_format: (request.outputFormat ||
+        "png") as NanoBananaProOutputFormat,
       num_images: request.numImages || 1,
       enable_safety_checker: request.enableSafetyChecker ?? true,
     });

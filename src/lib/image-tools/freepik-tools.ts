@@ -124,12 +124,14 @@ export function createFreepikProvider(apiKey: string): ImageToolProvider {
       options?: ImageToolOptions
     ): Promise<ImageToolResult> {
       try {
+        const requestedScale = Number(options?.scale ?? 2);
+        const scale = requestedScale >= 4 ? 4 : 2;
         const response = await fetch(`${FREEPIK_API_BASE}/image-upscaler`, {
           method: "POST",
           headers,
           body: JSON.stringify({
             image: imageUrl,
-            scale: parseInt(options?.scale || "2"),
+            scale,
           }),
         });
 

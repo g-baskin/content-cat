@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getGeneratorClient, parseGeneratorError } from "@/lib/generators";
+import type {
+  ProviderImageResolution,
+  RequestedImageResolution,
+} from "@/lib/generators/types";
 import { getApiKey } from "@/lib/services/apiKeyService";
 import {
   checkRateLimit,
@@ -13,16 +17,29 @@ import { requireAuth } from "@/lib/auth-helpers";
 import { logger } from "@/lib/logger";
 import { resolveImageForFal } from "@/lib/storage";
 import { prisma } from "@/lib/prisma";
+import { createFalProvider } from "@/lib/image-tools/fal-tools";
+
+const IMAGE_RESOLUTIONS = [
+  "1K",
+  "2K",
+  "4K",
+  "8K",
+] as const satisfies readonly RequestedImageResolution[];
 
 // Zod schema for image generation request
 const generateImageSchema = z.object({
   prompt: z.string().min(1, "Prompt is required").max(2500, "Prompt too long"),
-  service: z.enum(["fal", "midjourney", "google-gemini", "freepik"]).default("fal"),
+  service: z
+    .enum(["fal", "midjourney", "google-gemini", "freepik"])
+    .default("fal"),
   model: z.string().default("nano-banana-pro"),
   aspectRatio: z.string().default("1:1"),
-  resolution: z.enum(["1K", "2K"]).optional(),
+  resolution: z.enum(IMAGE_RESOLUTIONS).optional(),
   outputFormat: z.enum(["png", "jpeg", "webp"]).default("png"),
-  imageUrls: z.array(z.string()).max(10, "Maximum 10 reference images").optional(),
+  imageUrls: z
+    .array(z.string())
+    .max(10, "Maximum 10 reference images")
+    .optional(),
   numImages: z.number().int().min(1).max(6).default(1),
   enableWebSearch: z.boolean().default(false),
   enableSafetyChecker: z.boolean().default(true),
@@ -74,6 +91,7 @@ export async function POST(request: NextRequest) {
       service: parsedService,
       model,
       aspectRatio,
+      resolution,
       outputFormat,
       imageUrls,
       numImages,
@@ -83,6 +101,16 @@ export async function POST(request: NextRequest) {
     } = parseResult.data;
 
     service = parsedService;
+
+    if (
+      (resolution === "4K" || resolution === "8K") &&
+      (service !== "fal" || model !== "nano-banana-pro")
+    ) {
+      return NextResponse.json(
+        { error: "4K and 8K output require FAL.ai Nano Banana Pro" },
+        { status: 400 }
+      );
+    }
 
     // Get API key for the requested service
     const apiKey = await getApiKey(user!.id, service);
@@ -112,7 +140,8 @@ export async function POST(request: NextRequest) {
         if (url && url.length > MAX_IMAGE_SIZE) {
           return NextResponse.json(
             {
-              error: "Reference image is too large. Please use a smaller image (max 5MB).",
+              error:
+                "Reference image is too large. Please use a smaller image (max 5MB).",
             },
             { status: 400 }
           );
@@ -140,10 +169,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare request
+    const providerResolution: ProviderImageResolution | undefined =
+      resolution === "8K" ? "4K" : resolution;
     const generationRequest = {
       prompt,
       numImages,
       aspectRatio,
+      resolution: providerResolution,
       outputFormat,
       enableSafetyChecker,
       seed,
@@ -151,7 +183,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Execute generation with timeout
-    const result = await withTimeout(
+    let result = await withTimeout(
       resolvedImageUrls.length > 0
         ? generator.editImage({
             ...generationRequest,
@@ -161,6 +193,47 @@ export async function POST(request: NextRequest) {
       TIMEOUTS.IMAGE_GENERATION,
       "Image generation timed out. Please try again."
     );
+    let warning: string | undefined;
+
+    if (resolution === "8K") {
+      try {
+        const upscaler = createFalProvider(apiKey);
+        const images = await Promise.all(
+          result.images.map(async (image) => {
+            if (Math.max(image.width ?? 0, image.height ?? 0) >= 8192) {
+              return image;
+            }
+            const upscaled = await withTimeout(
+              upscaler.upscale(image.url, { scale: 2 }),
+              TIMEOUTS.IMAGE_GENERATION,
+              "8K upscale timed out"
+            );
+            if (!upscaled.success || !upscaled.url) {
+              throw new Error(upscaled.error || "8K upscale failed");
+            }
+            return {
+              ...image,
+              url: upscaled.url,
+              width: upscaled.width,
+              height: upscaled.height,
+            };
+          })
+        );
+        result = {
+          ...result,
+          images,
+          resultUrls: images.map((image) => image.url),
+        };
+      } catch (upscaleError) {
+        warning = "Generated at 4K, but automatic 8K upscaling failed";
+        logger.error("Automatic 8K upscale failed", {
+          error:
+            upscaleError instanceof Error
+              ? upscaleError.message
+              : "Unknown upscale error",
+        });
+      }
+    }
 
     // Save to database
     for (const imageUrl of result.resultUrls) {
@@ -183,6 +256,9 @@ export async function POST(request: NextRequest) {
       description: result.description,
       seed: result.seed,
       jobId: result.jobId,
+      requestedResolution: resolution,
+      deliveredResolution: resolution === "8K" && warning ? "4K" : resolution,
+      warning,
     });
   } catch (error) {
     logger.error("Image generation error", {

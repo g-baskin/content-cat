@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { toast } from "sonner";
 
@@ -209,16 +209,16 @@ export default function ImageDetailPanel({
     const modelNames: Record<string, string> = {
       "nano-banana-pro": "Nano Banana Pro",
       "seedream-4.5": "Seedream 4.5",
-      "midjourney": "Midjourney v6",
+      midjourney: "Midjourney v6",
       "niji-6": "Niji 6",
       "gemini-2.5-flash-image": "Gemini 2.5 Flash",
       "gemini-3-pro-image-preview": "Gemini 3 Pro",
-      "realism": "Realism",
-      "fluid": "Fluid",
-      "zen": "Zen",
-      "flexible": "Flexible",
-      "super_real": "Super Real",
-      "editorial_portraits": "Editorial Portraits",
+      realism: "Realism",
+      fluid: "Fluid",
+      zen: "Zen",
+      flexible: "Flexible",
+      super_real: "Super Real",
+      editorial_portraits: "Editorial Portraits",
     };
 
     return modelNames[image.generatorModel] || image.generatorModel;
@@ -237,14 +237,57 @@ export default function ImageDetailPanel({
     });
   };
 
-  // Parse aspect ratio to get dimensions (rough estimate)
+  const [measurement, setMeasurement] = useState<{
+    url: string;
+    width?: number;
+    height?: number;
+    failed: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const source = new window.Image();
+
+    source.onload = () => {
+      if (active) {
+        setMeasurement({
+          url: image.url,
+          width: source.naturalWidth,
+          height: source.naturalHeight,
+          failed: false,
+        });
+      }
+    };
+    source.onerror = () => {
+      if (active) setMeasurement({ url: image.url, failed: true });
+    };
+    source.src = image.url;
+
+    return () => {
+      active = false;
+    };
+  }, [image.url]);
+
+  const dimensions =
+    measurement?.url === image.url &&
+    measurement.width !== undefined &&
+    measurement.height !== undefined
+      ? { width: measurement.width, height: measurement.height }
+      : null;
+  const dimensionsFailed = measurement?.url === image.url && measurement.failed;
+
+  const getQuality = () => {
+    if (!dimensions) return dimensionsFailed ? "Unknown" : "Loading...";
+    const longestEdge = Math.max(dimensions.width, dimensions.height);
+    if (longestEdge >= 7000) return "8K";
+    if (longestEdge >= 3500) return "4K";
+    if (longestEdge >= 1800) return "2K";
+    return "1K";
+  };
+
   const getDimensions = () => {
-    const [w, h] = image.aspectRatio.split(":").map(Number);
-    if (!w || !h) return "1024x1024";
-    const base = 1024;
-    if (w === h) return `${base}x${base}`;
-    if (w > h) return `${base}x${Math.round(base * (h / w))}`;
-    return `${Math.round(base * (w / h))}x${base}`;
+    if (!dimensions) return dimensionsFailed ? "Unavailable" : "Loading...";
+    return `${dimensions.width}x${dimensions.height}`;
   };
 
   return (
@@ -355,7 +398,9 @@ export default function ImageDetailPanel({
                   <div className="border-t border-white/10">
                     <div className="grid grid-cols-[1fr_auto] border-b border-white/10 px-4 py-3.5 last:border-0">
                       <p className="text-sm text-zinc-300">Quality</p>
-                      <p className="text-sm font-medium text-white">1K</p>
+                      <p className="text-sm font-medium text-white">
+                        {getQuality()}
+                      </p>
                     </div>
                     <div className="grid grid-cols-[1fr_auto] border-b border-white/10 px-4 py-3.5 last:border-0">
                       <p className="text-sm text-zinc-300">Size</p>
@@ -394,7 +439,7 @@ export default function ImageDetailPanel({
               type="button"
               onClick={() => onVideo?.(image.url, image.prompt)}
               disabled={!onVideo}
-              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <VideoIcon />
               Video
@@ -415,7 +460,7 @@ export default function ImageDetailPanel({
               type="button"
               onClick={() => onUpscale?.(image.url, image.prompt)}
               disabled={!onUpscale}
-              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <UpscaleIcon />
               Upscale
@@ -426,7 +471,7 @@ export default function ImageDetailPanel({
               type="button"
               onClick={() => onEdit?.(image.url, image.prompt)}
               disabled={!onEdit}
-              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-12 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <EditIcon />
               Edit

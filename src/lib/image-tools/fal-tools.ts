@@ -7,13 +7,26 @@ import type {
 } from "./types";
 
 // Type for fal.subscribe result
-interface FalResult {
-  image?: { url: string };
-  images?: Array<{ url: string }>;
+interface FalImage {
+  url: string;
+  width?: number;
+  height?: number;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type FalSubscribe = (modelId: string, options: any) => Promise<FalResult>;
+interface FalResult {
+  image?: FalImage;
+  images?: FalImage[];
+}
+
+interface FalSubscribeResult {
+  data: FalResult;
+}
+
+type FalSubscribe = (
+  modelId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  options: any
+) => Promise<FalSubscribeResult>;
 
 // Configure fal client
 function configureFal(apiKey: string) {
@@ -46,7 +59,8 @@ export function createFalProvider(apiKey: string): ImageToolProvider {
           logs: true,
         });
 
-        const outputUrl = result?.image?.url || result?.images?.[0]?.url;
+        const outputUrl =
+          result.data?.image?.url || result.data?.images?.[0]?.url;
 
         if (!outputUrl) {
           return { success: false, error: "No output image returned" };
@@ -64,26 +78,31 @@ export function createFalProvider(apiKey: string): ImageToolProvider {
       options?: ImageToolOptions
     ): Promise<ImageToolResult> {
       try {
-        const scale = parseInt(options?.scale || "2");
+        const requestedScale = Number(options?.scale ?? 2);
+        const upscaleFactor = requestedScale >= 4 ? 4 : 2;
 
         const result = await subscribe("fal-ai/clarity-upscaler", {
           input: {
             image_url: imageUrl,
-            scale: scale,
+            upscale_factor: upscaleFactor,
             creativity: 0.2,
             resemblance: 0.8,
-            output_format: "png",
           },
           logs: true,
         });
 
-        const outputUrl = result?.image?.url || result?.images?.[0]?.url;
+        const outputImage = result.data?.image || result.data?.images?.[0];
 
-        if (!outputUrl) {
+        if (!outputImage?.url) {
           return { success: false, error: "No output image returned" };
         }
 
-        return { success: true, url: outputUrl };
+        return {
+          success: true,
+          url: outputImage.url,
+          width: outputImage.width,
+          height: outputImage.height,
+        };
       } catch (error) {
         logger.error("FAL upscale error", { error });
         return { success: false, error: "Failed to upscale image" };
@@ -99,7 +118,8 @@ export function createFalProvider(apiKey: string): ImageToolProvider {
           logs: true,
         });
 
-        const outputUrl = result?.image?.url || result?.images?.[0]?.url;
+        const outputUrl =
+          result.data?.image?.url || result.data?.images?.[0]?.url;
 
         if (!outputUrl) {
           return { success: false, error: "No output image returned" };
@@ -144,7 +164,8 @@ export function createFalProvider(apiKey: string): ImageToolProvider {
           logs: true,
         });
 
-        const outputUrl = result?.images?.[0]?.url || result?.image?.url;
+        const outputUrl =
+          result.data?.images?.[0]?.url || result.data?.image?.url;
 
         if (!outputUrl) {
           return { success: false, error: "No output image returned" };
@@ -171,7 +192,8 @@ export function createFalProvider(apiKey: string): ImageToolProvider {
           logs: true,
         });
 
-        const outputUrl = result?.image?.url || result?.images?.[0]?.url;
+        const outputUrl =
+          result.data?.image?.url || result.data?.images?.[0]?.url;
 
         if (!outputUrl) {
           return { success: false, error: "No output image returned" };
@@ -203,7 +225,8 @@ export function createFalProvider(apiKey: string): ImageToolProvider {
           logs: true,
         });
 
-        const outputUrl = result?.images?.[0]?.url || result?.image?.url;
+        const outputUrl =
+          result.data?.images?.[0]?.url || result.data?.image?.url;
 
         if (!outputUrl) {
           return { success: false, error: "No output image returned" };
@@ -232,7 +255,8 @@ export function createFalProvider(apiKey: string): ImageToolProvider {
           logs: true,
         });
 
-        const outputUrl = result?.image?.url || result?.images?.[0]?.url;
+        const outputUrl =
+          result.data?.image?.url || result.data?.images?.[0]?.url;
 
         if (!outputUrl) {
           return { success: false, error: "No output image returned" };
@@ -265,7 +289,8 @@ export function createFalProvider(apiKey: string): ImageToolProvider {
           logs: true,
         });
 
-        const outputUrl = result?.images?.[0]?.url || result?.image?.url;
+        const outputUrl =
+          result.data?.images?.[0]?.url || result.data?.image?.url;
 
         if (!outputUrl) {
           return { success: false, error: "No output image returned" };

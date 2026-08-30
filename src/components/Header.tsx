@@ -12,6 +12,7 @@ const navItems = [
   { label: "Workflow", href: "/workflow" },
   { label: "Characters", href: "/create-character" },
   { label: "Products", href: "/products" },
+  { label: "Presets", href: "/presets" },
   { label: "Prompts", href: "/prompts" },
   { label: "Settings", href: "/settings" },
 ];
@@ -115,9 +116,9 @@ export default function Header() {
             ))}
             <Link
               href="/assets"
-              className="hidden md:grid grid-flow-col items-center justify-center gap-1 pl-2 pr-3 py-1.5 rounded-lg border border-white/10 bg-white/5 backdrop-blur-sm text-white transition-all hover:bg-white/10 hover:border-white/20"
+              className="hidden grid-flow-col items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/5 py-1.5 pr-3 pl-2 text-white backdrop-blur-sm transition-all hover:border-white/20 hover:bg-white/10 md:grid"
             >
-              <div className="grid items-center justify-center size-6">
+              <div className="grid size-6 items-center justify-center">
                 <FolderIcon />
               </div>
               <span className="text-sm font-medium">Asset library</span>

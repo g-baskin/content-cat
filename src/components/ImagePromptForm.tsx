@@ -83,6 +83,11 @@ export default function ImagePromptForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const maxImages = MAX_IMAGES_PER_GENERATION;
+  const supportsHighResolution =
+    service === "fal" && model === "nano-banana-pro";
+  const availableResolutionOptions = supportsHighResolution
+    ? resolutionOptions
+    : resolutionOptions.filter(({ value }) => value === "1K" || value === "2K");
 
   // File upload hook - uploads to /uploads/images/ directory
   const { upload } = useFileUpload({ category: "images" });
@@ -100,6 +105,15 @@ export default function ImagePromptForm({
   useEffect(() => {
     autoResizeTextarea();
   }, [prompt, autoResizeTextarea]);
+
+  useEffect(() => {
+    if (
+      !supportsHighResolution &&
+      (resolution === "4K" || resolution === "8K")
+    ) {
+      setResolution("1K");
+    }
+  }, [resolution, supportsHighResolution]);
 
   // Fetch saved characters and products
   useEffect(() => {
@@ -618,7 +632,7 @@ export default function ImagePromptForm({
 
             {/* Resolution selector */}
             <SelectDropdown
-              options={resolutionOptions}
+              options={availableResolutionOptions}
               value={resolution}
               onChange={setResolution}
               icon={<ResolutionIcon />}

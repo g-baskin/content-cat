@@ -3,5 +3,7 @@ node_modules
 out
 build
 coverage
+other_apps
+other_apps_backup_*
 *.min.js
 package-lock.json

@@ -55,11 +55,8 @@ function ImagePageContent() {
   const [isUpscaling, setIsUpscaling] = useState(false);
 
   // Use global store for pending count to persist across navigation
-  const {
-    pendingImageGenerations,
-    addImageGeneration,
-    removeImageGeneration,
-  } = useGenerationStore();
+  const { pendingImageGenerations, addImageGeneration, removeImageGeneration } =
+    useGenerationStore();
   const pendingCount = pendingImageGenerations.length;
 
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
@@ -118,20 +115,30 @@ function ImagePageContent() {
 
   const handleVideo = (imageUrl: string, prompt: string) => {
     // Navigate to video page with the image as reference
-    router.push(`/video?imageUrl=${encodeURIComponent(imageUrl)}&prompt=${encodeURIComponent(prompt)}`);
+    router.push(
+      `/video?imageUrl=${encodeURIComponent(imageUrl)}&prompt=${encodeURIComponent(prompt)}`
+    );
   };
 
-  const handleUpscale = async (imageUrl: string, prompt: string) => {
+  const handleUpscale = async (
+    imageUrl: string,
+    prompt: string,
+    aspectRatio: string
+  ) => {
     if (isUpscaling) return;
 
     setIsUpscaling(true);
     toast.info("Starting upscale...");
 
     try {
-      const response = await apiFetch("/api/upscale-image", {
+      const response = await apiFetch("/api/image-tools", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl, scale: "2" }),
+        body: JSON.stringify({
+          tool: "upscale",
+          imageUrl,
+          options: { scale: "2" },
+        }),
         timeout: 300000, // 5 minutes for upscale
       });
 
@@ -150,7 +157,7 @@ function ImagePageContent() {
           body: JSON.stringify({
             url: result.url,
             prompt: `${prompt} (2x upscaled)`,
-            aspectRatio: "1:1", // Upscaled maintains ratio
+            aspectRatio,
           }),
         });
 
@@ -223,6 +230,10 @@ function ImagePageContent() {
         if (!response.ok) {
           toast.error(result.error || "Failed to generate images");
           return;
+        }
+
+        if (result.warning) {
+          toast.warning(result.warning);
         }
 
         let successCount = 0;
@@ -364,7 +375,9 @@ function ImagePageContent() {
             setSelectedImage(null);
           }}
           onVideo={(imageUrl, prompt) => handleVideo(imageUrl, prompt)}
-          onUpscale={(imageUrl, prompt) => handleUpscale(imageUrl, prompt)}
+          onUpscale={(imageUrl, prompt) =>
+            handleUpscale(imageUrl, prompt, selectedImage.aspectRatio)
+          }
           onEdit={(imageUrl) => handleEditImage(imageUrl)}
         />
       )}

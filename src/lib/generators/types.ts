@@ -28,7 +28,11 @@ export interface GeneratorErrorResponse {
 /**
  * Generator service type
  */
-export type GeneratorService = "fal" | "midjourney" | "google-gemini" | "freepik";
+export type GeneratorService =
+  | "fal"
+  | "midjourney"
+  | "google-gemini"
+  | "freepik";
 
 /**
  * Generated image structure
@@ -41,12 +45,19 @@ export interface GeneratedImage {
 }
 
 /**
+ * Resolution requested by the API/UI. Providers receive only native resolutions.
+ */
+export type ProviderImageResolution = "1K" | "2K" | "4K";
+export type RequestedImageResolution = ProviderImageResolution | "8K";
+
+/**
  * Base options for image generation (common across all generators)
  */
 export interface BaseGenerationRequest {
   prompt: string;
   numImages?: number;
   aspectRatio?: string;
+  resolution?: ProviderImageResolution;
   outputFormat?: string;
   seed?: number;
   enableSafetyChecker?: boolean;

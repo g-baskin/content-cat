@@ -8,10 +8,9 @@ import { ChevronDownIcon, CloseIcon, KeyIcon, TrashIcon } from "./icons";
 
 interface ApiKey {
   id: string;
-  name: string;
-  key: string;
   service: string;
   isActive: boolean;
+  maskedKey: string;
 }
 
 interface ApiKeysModalProps {
@@ -21,8 +20,16 @@ interface ApiKeysModalProps {
 
 const SERVICES = [
   { id: "fal", name: "FAL.ai", description: "Nano Banana Pro & Seedream" },
-  { id: "midjourney", name: "Midjourney", description: "Midjourney v6 & Niji 6" },
-  { id: "google-gemini", name: "Google Gemini", description: "Gemini Flash & Pro" },
+  {
+    id: "midjourney",
+    name: "Midjourney",
+    description: "Midjourney v6 & Niji 6",
+  },
+  {
+    id: "google-gemini",
+    name: "Google Gemini",
+    description: "Gemini Flash & Pro",
+  },
   { id: "freepik", name: "Freepik", description: "Mystic, Flux & Seedream" },
 ];
 
@@ -203,20 +210,18 @@ export default function ApiKeysModal({ isOpen, onClose }: ApiKeysModalProps) {
     setIsSaving(true);
 
     try {
-      const serviceName = SERVICES.find((s) => s.id === selectedService)?.name;
       const response = await apiFetch("/api/api-keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: serviceName,
-          key: newKey,
+          apiKey: newKey,
           service: selectedService,
         }),
       });
 
       if (response.ok) {
         setNewKey("");
-        fetchApiKeys();
+        await fetchApiKeys();
         toast.success("API key saved");
       } else {
         toast.error("Failed to save API key");
@@ -295,10 +300,11 @@ export default function ApiKeysModal({ isOpen, onClose }: ApiKeysModalProps) {
               >
                 <div>
                   <p className="text-sm font-medium text-white">
-                    {apiKey.name}
+                    {SERVICES.find((service) => service.id === apiKey.service)
+                      ?.name ?? apiKey.service}
                   </p>
                   <p className="font-mono text-xs text-zinc-400">
-                    {apiKey.key}
+                    {apiKey.maskedKey}
                   </p>
                 </div>
                 <button
