@@ -1,5 +1,7 @@
 ---
+title: Contradiction Report — 2026-08-29
 type: meta
+status: developing
 report_type: contradiction
 date: "2026-08-29"
 created: "2026-08-29"

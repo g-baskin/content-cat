@@ -47,4 +47,8 @@ next-env.d.ts
 
 # uploads
 /uploads
+
+# local import corpus
+/other_apps/
+
 .env.bak
