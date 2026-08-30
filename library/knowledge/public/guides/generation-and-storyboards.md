@@ -1,8 +1,8 @@
 # Generation and Storyboard Workflows
 
-> Category: User Guide | Version: 1.0 | Date: August 2026 | Status: Active
+> Category: User Guide | Version: 1.1 | Date: August 2026 | Status: Active
 
-Use Content Cat's Settings, Image, Video, and Storyboard areas together to create individual media or a stitched multi-scene video.
+Use Content Cat's global API-key controls, Image, Video, Presets, and Storyboard areas together to create individual media or a stitched multi-scene video.
 
 **Related:**
 
@@ -11,11 +11,13 @@ Use Content Cat's Settings, Image, Video, and Storyboard areas together to creat
 
 ## 1. Configure provider keys
 
-Provider credentials belong to the signed-in user rather than the deployment as a whole. Add or replace a key in Settings before choosing that service for generation. Saved keys are encrypted before database storage and shown only in masked form when listed.
+Provider credentials belong to the signed-in user rather than the deployment as a whole. Use **API Keys** in the global header to open the credential modal, then select FAL.ai, Midjourney, Google Gemini, or Freepik and add or replace that service's key. Saved keys are encrypted before database storage and shown only in masked form when listed.
 
-The current Settings API accepts FAL.ai, Midjourney, Google Gemini, and Freepik keys. Although video and TTS adapters also exist, the Settings API does not currently accept standalone Runway, Pika, Luma, OpenAI, ElevenLabs, or Fish Audio service entries. F5-TTS deliberately reuses the FAL.ai key.
+**Validate** performs a real provider authentication check only for FAL.ai, and Save does not require validation first. For Midjourney, Gemini, and Freepik, Validate confirms only that the field is non-empty; generation can still fail later because a key is invalid, lacks credit, or lacks model access. The header's **Get Key**/**Top Up** link is FAL-specific. The current modal's Delete action does not match the implemented deletion endpoint and may fail; replacing a key with Save remains supported.
 
-**Code references:** `src/app/settings/page.tsx`, `src/components/ApiKeysModal.tsx`, `src/app/api/api-keys/route.ts`, `src/lib/services/apiKeyService.ts`, `src/app/api/tts/generate/route.ts`.
+Although video and TTS adapters also exist, this modal and its write API do not accept standalone Runway, Pika, Luma, OpenAI, ElevenLabs, or Fish Audio service entries. F5-TTS deliberately reuses the FAL.ai key.
+
+**Code references:** `src/components/Header.tsx`, `src/components/ApiKeysModal.tsx`, `src/app/api/api-keys/route.ts`, `src/app/api/api-keys/[id]/route.ts`, `src/app/api/api-keys/validate/route.ts`, `src/lib/services/apiKeyService.ts`, `src/app/api/tts/generate/route.ts`.
 
 ## 2. Generate an image or video
 
@@ -26,9 +28,29 @@ The current Settings API accepts FAL.ai, Midjourney, Google Gemini, and Freepik 
 
 Local image references are resolved before provider submission. Video model selection can infer the service when the caller does not supply one. Provider jobs that do not return immediately are polled inside their adapters and the outer API call also has a timeout.
 
-**Code references:** `src/app/api/generate-image/route.ts`, `src/app/api/generate-video/route.ts`, `src/lib/storage.ts`, `src/lib/generators/`, `src/lib/video-generators/`.
+### Resolution behavior
 
-## 3. Build a storyboard
+- 1K and 2K are available in the image form for every model; 4K and 8K require **FAL.ai + Nano Banana Pro**. Changing to another model resets a selected 4K/8K value to 1K, and the server independently rejects unsupported combinations.
+- 8K is a two-stage request, not native generation: Nano Banana Pro first generates at 4K, then FAL Clarity Upscaler performs a 2× upscale. Expect additional latency and provider cost.
+- If automatic upscaling fails, the generation remains successful at 4K and the page shows **Generated at 4K, but automatic 8K upscaling failed**. Treat that warning as a delivery downgrade and inspect/download the resulting asset rather than assuming the requested label was achieved.
+- Image Details measures the loaded asset's actual browser dimensions and derives its quality label from the longest edge. It does not recover the historical resolution request. A camera preset or the text “8K resolution” in a prompt changes prompt wording only, not this resolution control.
+- The separate **Upscale** action in Image Details creates a new 2× image. It is independent of automatic 8K delivery and may use Freepik when both Freepik and FAL keys are configured.
+
+**Code references:** `src/components/ImagePromptForm.tsx`, `src/lib/constants/image-form.ts`, `src/app/api/generate-image/route.ts`, `src/lib/image-tools/fal-tools.ts`, `src/app/api/image-tools/route.ts`, `src/app/image/page.tsx`, `src/components/ImageDetailPanel.tsx`.
+
+## 3. Use an imported preset
+
+1. Open **Presets** from the global navigation.
+2. Choose Cameras, Lenses, Shots, Lighting, Styles, or Enhancements.
+3. Search within that selected category by preset name or prompt text.
+4. Select **Use in Image** to open the Image page with the preset prompt prefilled.
+5. Review and combine the text as needed, then choose the actual provider, model, aspect ratio, and resolution in the image form.
+
+The catalog is a read-only set of 49 checked-in entries. Stars mean “imported from archive”; they are not favorite toggles. Preset source labels identify the declared KingAI or research-hub source. No preset ID or source is saved with the generated image, and category changes clear the current search.
+
+**Code references:** `src/app/presets/page.tsx`, `src/lib/imported-presets/catalog.ts`, `src/lib/imported-presets/cameras.ts`, `src/app/image/page.tsx`, `src/components/Header.tsx`.
+
+## 4. Build a storyboard
 
 1. Create a storyboard and add scenes.
 2. For each scene, set its prompt, duration, aspect ratio, service/model, optional reference images, transition, and optional dialogue fields.
@@ -41,7 +63,7 @@ Scene generation is coordinated by the editor: it marks a scene as generating, c
 
 **Code references:** `src/components/storyboard/StoryboardEditor.tsx`, `src/app/api/storyboards/[id]/scenes/`, `src/app/api/generate-video/route.ts`.
 
-## 4. Generate dialogue and stitch
+## 5. Generate dialogue and stitch
 
 A scene may store dialogue text and a preferred voice. Dialogue generation writes MP3 files under `uploads/dialogue/` and records their URLs on the scenes. During stitching, the server:
 

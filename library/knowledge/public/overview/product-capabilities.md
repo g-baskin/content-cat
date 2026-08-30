@@ -1,6 +1,6 @@
 # Content Cat Product Capabilities
 
-> Category: Product Overview | Version: 1.0 | Date: August 2026 | Status: Active
+> Category: Product Overview | Version: 1.1 | Date: August 2026 | Status: Active
 
 Content Cat is a self-hosted workspace for generating images, videos, speech, and multi-scene storyboard videos with user-supplied provider credentials.
 
@@ -19,9 +19,11 @@ Authenticated users can generate images from prompts and, where the selected pro
 - **Google Gemini** — Gemini image generation and reference-image editing.
 - **Freepik** — Flux, Seedream, Hyperflux, and Mystic-family text-to-image models; the adapter does not expose reference-image editing.
 
-Generation requests are authenticated, validated, rate-limited, matched to the current user's active key for the requested service, and persisted as generated-image records after the provider returns. Supported options depend on provider capabilities and include aspect ratio, output format, multiple outputs, seeds, and reference images. The current image route also limits 4K/8K requests to FAL.ai Nano Banana Pro; an 8K request is generated at 4K and then upscaled, with a warning if the upscale step fails.
+Generation requests are authenticated, validated, rate-limited, matched to the current user's active key for the requested service, and persisted as generated-image records after the provider returns. Supported options depend on provider capabilities and include aspect ratio, output format, multiple outputs, seeds, and reference images.
 
-**Code references:** `src/app/api/generate-image/route.ts`, `src/lib/generators/factory.ts`, `src/lib/generators/types.ts`, `src/lib/constants/image-form.ts`, `prisma/schema.prisma`.
+The current image route limits 4K/8K requests to FAL.ai Nano Banana Pro. Providers receive native resolutions only, so an 8K request first generates at 4K and then invokes a 2× FAL upscale. If that second stage fails, the request succeeds with the original 4K output and an explicit warning. Provider-returned dimensions travel with the immediate generation response, but image history does not persist width, height, requested resolution, or delivered resolution; Image Details measures the loaded asset later.
+
+**Code references:** `src/app/api/generate-image/route.ts`, `src/lib/generators/factory.ts`, `src/lib/generators/types.ts`, `src/lib/constants/image-form.ts`, `src/lib/image-tools/fal-tools.ts`, `src/components/ImageDetailPanel.tsx`, `prisma/schema.prisma`.
 
 ## Video generation
 
@@ -51,8 +53,14 @@ The TTS abstraction includes OpenAI, ElevenLabs, Fish Audio, and F5-TTS provider
 
 **Code references:** `src/lib/tts/`, `src/app/api/tts/generate/route.ts`, `src/app/api/tts/voices/route.ts`, `src/app/api/storyboards/[id]/generate-dialogue/route.ts`, `prisma/schema.prisma`.
 
+## Imported presets
+
+The Presets page provides 49 checked-in prompt presets across Cameras, Lenses, Shots, Lighting, Styles, and Enhancements. Users can filter the selected category and send a preset's prompt to the Image page. The catalog preserves source labels from KingAI cinema, product-shot, and ad-style presets plus research-hub enhancement tags. It is read-only application data: the star indicates imported provenance, not a saved favorite, and using a preset does not bind a provider, model, resolution, or source record to the generated image.
+
+**Code references:** `src/app/presets/page.tsx`, `src/lib/imported-presets/catalog.ts`, `src/lib/imported-presets/cameras.ts`, `src/app/image/page.tsx`.
+
 ## Other durable workspace capabilities
 
-The current data model also supports reusable characters and products with reference images, saved node workflows, generated-media history, and per-user sessions. Image tools can dispatch compatible operations to Freepik first and FAL.ai as a fallback, based on which user keys are available.
+The current data model also supports reusable characters and products with reference images, saved node workflows, generated-media history, and per-user sessions. Image tools can dispatch compatible operations to Freepik first and FAL.ai as a fallback, based on which user keys are available. The shared header exposes per-user image-provider key management and links to the presets catalog.
 
-**Code references:** `prisma/schema.prisma`, `src/app/api/image-tools/route.ts`, `src/lib/image-tools/`.
+**Code references:** `prisma/schema.prisma`, `src/app/api/image-tools/route.ts`, `src/lib/image-tools/`, `src/components/Header.tsx`, `src/components/ApiKeysModal.tsx`.

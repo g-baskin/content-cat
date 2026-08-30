@@ -25,12 +25,12 @@ Product and feature work, organized by lifecycle state.
 
 ## Sub-folders
 
-| Folder       | State     | Description                                            |
-| ------------ | --------- | ------------------------------------------------------ |
-| `backlog/`   | Queued    | PRDs planned but not yet started                       |
-| `in-work/`   | Active    | PRDs currently being implemented                       |
-| `completed/` | Shipped   | Entire PRD folder moves here when work ships           |
-| `reports/`   | Evergreen | Routine non-QA specialist reports not tied to a PRD    |
+| Folder       | State     | Description                                         |
+| ------------ | --------- | --------------------------------------------------- |
+| `backlog/`   | Queued    | PRDs planned but not yet started                    |
+| `in-work/`   | Active    | PRDs currently being implemented                    |
+| `completed/` | Shipped   | Entire PRD folder moves here when work ships        |
+| `reports/`   | Evergreen | Routine non-QA specialist reports not tied to a PRD |
 
 ## PRD folder structure
 
